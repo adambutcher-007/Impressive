@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impre$$ive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500&amp;display=swap');
+        
+        :root {
+            --tw-color-primary: #10b981;
+        }
+        
+        * {
+            transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 150ms;
+        }
+        
+        .card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 25px 50px -12px rgb(16 185 129 / 0.15);
+        }
+        
+        .nav-link {
+            position: relative;
+        }
+        
+        .nav-link.active:after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: #10b981;
+            border-radius: 9999px;
+        }
+        
+        .modal {
+            animation: modalPop 0.3s ease forwards;
+        }
+        
+        @keyframes modalPop {
+            0% { transform: scale(0.95); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .data-table tr {
+            transition: background-color 0.2s ease;
+        }
+        
+        .data-table tr:hover {
+            background-color: #052e16;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white font-sans">
+    <div class="flex min-h-screen">
+        <!-- SIDEBAR -->
+        <div class="hidden md:flex md:w-72 bg-zinc-900 flex-col border-r border-zinc-800">
+            <div class="px-8 py-8 flex items-center gap-x-3 border-b border-zinc-800">
+                <div class="w-9 h-9 bg-emerald-500 rounded-2xl flex items-center justify-center text-2xl shadow-inner">💰</div>
+                <h1 class="text-3xl font-semibold tracking-[-1px]" style="font-family: 'Space Grotesk', sans-serif;">Impre$$ive</h1>
+            </div>
+            
+            <nav class="flex-1 px-4 py-6 space-y-1">
+                <a onclick="navigateTo(0)" id="nav-0" class="nav-link active flex items-center gap-x-3 px-6 py-4 text-zinc-300 hover:text-white hover:bg-emerald-950/50 rounded-3xl mx-2 text-lg font-medium">
+                    <span class="text-2xl">📊</span>
+                    Dashboard
+                </a>
+                <a onclick="navigateTo(1)" id="nav-1" class="nav-link flex items-center gap-x-3 px-6 py-4 text-zinc-300 hover:text-white hover:bg-emerald-950/50 rounded-3xl mx-2 text-lg font-medium">
+                    <span class="text-2xl">📋</span>
+                    Transactions
+                </a>
+                <a onclick="navigateTo(2)" id="nav-2" class="nav-link flex items-center gap-x-3 px-6 py-4 text-zinc-300 hover:text-white hover:bg-emerald-950/50 rounded-3xl mx-2 text-lg font-medium">
+                    <span class="text-2xl">🎯</span>
+                    Budgets
+                </a>
+                <a onclick="navigateTo(3)" id="nav-3" class="nav-link flex items-center gap-x-3 px-6 py-4 text-zinc-300 hover:text-white hover:bg-emerald-950/50 rounded-3xl mx-2 text-lg font-medium">
+                    <span class="text-2xl">🚀</span>
+                    Goals
+                </a>
+                <a onclick="navigateTo(4)" id="nav-4" class="nav-link flex items-center gap-x-3 px-6 py-4 text-zinc-300 hover:text-white hover:bg-emerald-950/50 rounded-3xl mx-2 text-lg font-medium">
+                    <span class="text-2xl">📤</span>
+                    Import / Export
+                </a>
+            </nav>
+            
+            <div class="p-6 border-t border-zinc-800 mt-auto">
+                <div class="bg-emerald-950/30 rounded-3xl p-5 text-sm">
+                    <div class="flex justify-between items-center mb-3">
+                        <div class="font-medium">Total Balance</div>
+                        <div id="sidebar-balance" class="font-semibold text-emerald-400 text-xl">$4,872.35</div>
+                    </div>
+                    <div onclick="exportCSV()" class="flex items-center justify-center gap-x-2 bg-white text-zinc-900 hover:bg-emerald-400 hover:text-white font-semibold py-3 px-6 rounded-2xl text-sm cursor-pointer">
+                        <span>📤</span>
+                        EXPORT CSV
+                    </div>
+                </div>
+                
+                <div class="text-xs text-zinc-500 mt-8 flex items-center justify-between">
+                    <div>Built as a single HTML file • Offline first</div>
+                    <div onclick="clearAllData()" class="cursor-pointer hover:text-red-400">Reset app</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- MOBILE HEADER -->
+        <div class="md:hidden fixed top-0 left-0 right-0 bg-zinc-900 border-b border-zinc-800 z-50 px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-x-3">
+                <div class="w-8 h-8 bg-emerald-500 rounded-2xl flex items-center justify-center text-xl">💰</div>
+                <h1 class="text-2xl font-semibold tracking-[-1px]" style="font-family: 'Space Grotesk', sans-serif;">Impre$$ive</h1>
+            </div>
+            
+            <div class="flex items-center gap-x-4">
+                <div id="mobile-balance" class="font-semibold text-emerald-400 text-xl">$4,872.35</div>
+                <button onclick="toggleMobileMenu()" class="w-10 h-10 flex items-center justify-center text-3xl">☰</button>
+            </div>
+        </div>
+        
+        <!-- MOBILE MENU -->
+        <div onclick="if(event.target.id === 'mobile-menu') toggleMobileMenu()" id="mobile-menu" class="hidden fixed inset-0 bg-black/70 z-[9999] md:hidden">
+            <div onclick="event.stopImmediatePropagation()" class="bg-zinc-900 w-4/5 max-w-xs ml-auto h-full p-6 flex flex-col">
+                <div class="flex justify-end mb-8">
+                    <button onclick="toggleMobileMenu()" class="text-4xl">✕</button>
+                </div>
+                <nav class="flex-1 space-y-4">
+                    <a onclick="navigateTo(0);toggleMobileMenu()" class="flex items-center gap-x-4 text-xl py-4 px-6 rounded-3xl hover:bg-emerald-950/50">📊 Dashboard</a>
+                    <a onclick="navigateTo(1);toggleMobileMenu()" class="flex items-center gap-x-4 text-xl py-4 px-6 rounded-3xl hover:bg-emerald-950/50">📋 Transactions</a>
+                    <a onclick="navigateTo(2);toggleMobileMenu()" class="flex items-center gap-x-4 text-xl py-4 px-6 rounded-3xl hover:bg-emerald-950/50">🎯 Budgets</a>
+                    <a onclick="navigateTo(3);toggleMobileMenu()" class="flex items-center gap-x-4 text-xl py-4 px-6 rounded-3xl hover:bg-emerald-950/50">🚀 Goals</a>
+                    <a onclick="navigateTo(4);toggleMobileMenu()" class="flex items-center gap-x-4 text-xl py-4 px-6 rounded-3xl hover:bg-emerald-950/50">📤 Import / Export</a>
+                </nav>
+                <div class="mt-auto pt-6 border-t border-zinc-700">
+                    <button onclick="exportCSV();toggleMobileMenu()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-semibold py-4 rounded-3xl flex items-center justify-center gap-x-2">
+                        📤 EXPORT CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- MAIN CONTENT -->
+        <div class="flex-1 flex flex-col min-h-screen md:min-h-0 overflow-auto">
+            
+            <!-- PAGE 0: DASHBOARD -->
+            <div id="page-0" class="page p-6 md:p-10 flex-1">
+                <div class="max-w-screen-2xl mx-auto">
+                    <div class="flex justify-between items-end mb-8">
+                        <div>
+                            <h2 class="text-4xl font-semibold tracking-tight">Good evening, Adam 👋</h2>
+                            <p class="text-zinc-400 mt-1">Here's your financial overview • April 2026</p>
+                        </div>
+                        <div class="hidden sm:flex items-center gap-x-8 text-sm">
+                            <div onclick="navigateTo(4)" class="flex items-center gap-x-2 cursor-pointer hover:text-emerald-400">
+                                <span class="text-2xl">📤</span>
+                                <div>
+                                    <div class="font-medium">Last export</div>
+                                    <div id="last-export" class="text-zinc-400 text-xs">2 days ago</div>
+                                </div>
+                            </div>
+                            <div class="h-8 w-px bg-zinc-700"></div>
+                            <button onclick="showAddTransactionModal()" 
+                                    class="flex items-center gap-x-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold px-8 h-12 rounded-3xl text-base shadow-lg shadow-emerald-500/30">
+                                <span class="text-xl leading-none">+</span> NEW TRANSACTION
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- SUMMARY CARDS -->
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                            <div class="text-emerald-400 text-sm font-medium flex items-center gap-x-2">
+                                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                                CURRENT BALANCE
+                            </div>
+                            <div id="dashboard-balance" class="text-5xl font-semibold mt-3 mb-1">$4,872.35</div>
+                            <div id="balance-change" class="text-emerald-400 text-sm flex items-center">↑ $238 this month</div>
+                        </div>
+                        
+                        <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                            <div class="text-amber-400 text-sm font-medium">INCOME • APRIL</div>
+                            <div id="dashboard-income" class="text-5xl font-semibold mt-3 mb-1">$3,150.00</div>
+                            <div class="text-zinc-400 text-sm">4 transactions</div>
+                        </div>
+                        
+                        <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                            <div class="text-red-400 text-sm font-medium">EXPENSES • APRIL</div>
+                            <div id="dashboard-expenses" class="text-5xl font-semibold mt-3 mb-1">$2,277.65</div>
+                            <div class="text-zinc-400 text-sm">11 transactions</div>
+                        </div>
+                        
+                        <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-col">
+                            <div class="text-sm font-medium mb-4">NEXT GOAL PROGRESS</div>
+                            <div id="next-goal-name" class="font-medium">Emergency Fund</div>
+                            <div class="mt-auto">
+                                <div class="h-3 bg-white/10 rounded-3xl overflow-hidden">
+                                    <div id="next-goal-progress-bar" class="h-3 bg-emerald-400 w-3/4 rounded-3xl"></div>
+                                </div>
+                                <div id="next-goal-stats" class="flex justify-between text-xs mt-2 text-zinc-400">
+                                    <div>$3,650 of $5,000</div>
+                                    <div>73%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- CHARTS -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-8">
+                        <div class="lg:col-span-7 card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                            <div class="flex justify-between items-baseline mb-6">
+                                <h3 class="font-semibold text-xl">Balance Trend • Last 6 Months</h3>
+                                <select id="trend-period" onchange="renderDashboard()" class="bg-transparent text-xs border border-white/20 rounded-2xl px-4 py-1">
+                                    <option value="6">6 months</option>
+                                    <option value="12">12 months</option>
+                                </select>
+                            </div>
+                            <canvas id="trend-chart" class="h-80"></canvas>
+                        </div>
+                        
+                        <div class="lg:col-span-5 card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                            <h3 class="font-semibold text-xl mb-6">Spending by Category</h3>
+                            <canvas id="pie-chart" class="h-80"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- PAGE 1: TRANSACTIONS -->
+            <div id="page-1" class="page hidden p-6 md:p-10 flex-1">
+                <div class="max-w-screen-2xl mx-auto">
+                    <div class="flex justify-between items-center mb-8">
+                        <h2 class="text-4xl font-semibold">Transactions</h2>
+                        <div class="flex items-center gap-x-4">
+                            <input id="search-input" 
+                                   onkeyup="if(event.keyCode===13) filterTransactions()"
+                                   placeholder="Search description..." 
+                                   class="bg-white/10 border border-white/20 focus:border-emerald-400 rounded-3xl px-6 py-3 text-sm w-72 outline-none">
+                            <button onclick="showAddTransactionModal()" 
+                                    class="flex items-center gap-x-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold px-8 h-12 rounded-3xl">
+                                + Add
+                            </button>
+                            <button onclick="exportCSV()" class="px-6 h-12 border border-white/30 hover:border-white/70 rounded-3xl text-sm font-medium">Export CSV</button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr class="border-b border-white/10 text-xs uppercase tracking-widest text-zinc-400">
+                                    <th class="text-left py-5 px-8 font-medium">DATE</th>
+                                    <th class="text-left py-5 px-8 font-medium">DESCRIPTION</th>
+                                    <th class="text-left py-5 px-8 font-medium">CATEGORY</th>
+                                    <th class="text-right py-5 px-8 font-medium">AMOUNT</th>
+                                    <th class="w-28"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactions-body" class="text-sm divide-y divide-white/10"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- PAGE 2: BUDGETS -->
+            <div id="page-2" class="page hidden p-6 md:p-10 flex-1">
+                <div class="max-w-screen-2xl mx-auto">
+                    <h2 class="text-4xl font-semibold mb-8">Monthly Budgets</h2>
+                    
+                    <div id="budgets-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                    
+                    <div class="mt-12 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
+                        <h3 class="font-medium mb-4 flex items-center gap-x-2">Add new budget category</h3>
+                        <div class="flex gap-x-4">
+                            <input id="new-budget-cat" placeholder="Category name" class="flex-1 bg-transparent border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                            <input id="new-budget-limit" type="number" placeholder="$ Limit" class="w-40 bg-transparent border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                            <button onclick="addBudget()" class="bg-emerald-500 hover:bg-emerald-400 px-10 rounded-3xl font-medium">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- PAGE 3: GOALS -->
+            <div id="page-3" class="page hidden p-6 md:p-10 flex-1">
+                <div class="max-w-screen-2xl mx-auto">
+                    <div class="flex justify-between mb-8">
+                        <h2 class="text-4xl font-semibold">Savings Goals</h2>
+                        <button onclick="showAddGoalModal()" class="bg-emerald-500 hover:bg-emerald-400 px-8 h-12 rounded-3xl font-medium flex items-center gap-x-2">
+                            <span class="text-xl">+</span> New Goal
+                        </button>
+                    </div>
+                    
+                    <div id="goals-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                </div>
+            </div>
+            
+            <!-- PAGE 4: IMPORT / EXPORT -->
+            <div id="page-4" class="page hidden p-6 md:p-10 flex-1">
+                <div class="max-w-screen-2xl mx-auto">
+                    <h2 class="text-4xl font-semibold mb-2">Import &amp; Export</h2>
+                    <p class="text-zinc-400 mb-8">CSV is your permanent backup. All data stays in your browser until you export.</p>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                        <!-- IMPORT -->
+                        <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
+                            <h3 class="text-xl font-semibold mb-6">Import CSV from bank</h3>
+                            
+                            <div class="flex gap-x-3 mb-6">
+                                <button onclick="setBankPreset(0)" id="preset-usbank" 
+                                        class="flex-1 text-center py-4 rounded-3xl border-2 border-emerald-500 text-emerald-400 font-medium">U.S. Bank</button>
+                                <button onclick="setBankPreset(1)" id="preset-vanguard" 
+                                        class="flex-1 text-center py-4 rounded-3xl border border-white/30 hover:border-white/70">Vanguard</button>
+                                <button onclick="setBankPreset(2)" id="preset-custom" 
+                                        class="flex-1 text-center py-4 rounded-3xl border border-white/30 hover:border-white/70">Custom</button>
+                            </div>
+                            
+                            <div class="border border-dashed border-white/30 rounded-3xl p-8 text-center hover:border-emerald-400 cursor-pointer" onclick="document.getElementById('csv-upload').click()">
+                                <input type="file" id="csv-upload" accept=".csv" class="hidden" onchange="handleCSVUpload(event)">
+                                <div class="text-5xl mb-4">📤</div>
+                                <p class="font-medium">Drop your CSV here or click to browse</p>
+                                <p class="text-xs text-zinc-400 mt-1">Supports U.S. Bank &amp; Vanguard e-statements</p>
+                            </div>
+                            
+                            <div id="import-preview" class="hidden mt-8">
+                                <p class="text-sm mb-4 font-medium">Preview • <span id="import-count" class="text-emerald-400"></span> rows detected</p>
+                                <div class="max-h-64 overflow-auto bg-white/5 rounded-3xl p-4 text-xs border border-white/10">
+                                    <table id="preview-table" class="w-full"></table>
+                                </div>
+                                
+                                <div class="flex gap-x-4 mt-6">
+                                    <button onclick="cancelImport()" class="flex-1 py-4 rounded-3xl border border-white/30">Cancel</button>
+                                    <button onclick="confirmImport()" class="flex-1 py-4 bg-emerald-500 hover:bg-emerald-400 rounded-3xl font-semibold">Import all transactions</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- EXPORT & SETTINGS -->
+                        <div class="space-y-6">
+                            <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
+                                <h3 class="text-xl font-semibold mb-4">Export your data</h3>
+                                <p class="text-zinc-400 text-sm mb-6">Downloads a clean CSV file that you can re-import anywhere.</p>
+                                <button onclick="exportCSV()" 
+                                        class="w-full h-14 bg-white text-zinc-900 hover:bg-emerald-400 hover:text-white rounded-3xl font-semibold flex items-center justify-center gap-x-3 text-lg">
+                                    <span>📤</span> DOWNLOAD TRANSACTIONS.CSV
+                                </button>
+                            </div>
+                            
+                            <div class="card bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
+                                <h3 class="text-xl font-semibold mb-6">Your data is stored safely in your browser</h3>
+                                <ul class="space-y-6 text-sm">
+                                    <li class="flex justify-between"><span class="text-zinc-400">Transactions stored</span> <span id="stat-transactions" class="font-mono">24</span></li>
+                                    <li class="flex justify-between"><span class="text-zinc-400">Budgets defined</span> <span id="stat-budgets" class="font-mono">7</span></li>
+                                    <li class="flex justify-between"><span class="text-zinc-400">Savings goals</span> <span id="stat-goals" class="font-mono">3</span></li>
+                                    <li class="flex justify-between border-t border-white/10 pt-6"><span class="text-emerald-400 font-medium">Last saved</span> <span id="last-saved" class="font-mono text-emerald-400">just now</span></li>
+                                </ul>
+                            </div>
+                            
+                            <div onclick="clearAllData()" class="text-red-400 text-sm flex items-center justify-center cursor-pointer hover:underline">🗑️ Clear all data and start fresh</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ADD TRANSACTION MODAL -->
+    <div onclick="if(event.target.id === 'add-modal') hideAddTransactionModal()" id="add-modal" class="hidden fixed inset-0 bg-black/70 z-[10000] flex items-center justify-center">
+        <div class="modal bg-zinc-900 w-full max-w-lg mx-4 rounded-3xl p-8">
+            <h3 class="text-2xl font-semibold mb-6">New Transaction</h3>
+            
+            <div class="space-y-6">
+                <div>
+                    <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Date</label>
+                    <input id="modal-date" type="date" value="2026-04-03" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                </div>
+                
+                <div>
+                    <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Description</label>
+                    <input id="modal-desc" type="text" placeholder="Starbucks • Rent • Salary deposit" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Amount</label>
+                        <input id="modal-amount" type="number" step="0.01" placeholder="42.50" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Type</label>
+                        <div class="flex border border-white/20 rounded-3xl p-1">
+                            <button onclick="setModalType(1)" id="modal-type-income" class="flex-1 py-3 rounded-3xl font-medium">Income (+)</button>
+                            <button onclick="setModalType(-1)" id="modal-type-expense" class="flex-1 py-3 bg-emerald-500 text-white rounded-3xl font-medium">Expense (−)</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Category</label>
+                    <select id="modal-category" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex gap-x-4 mt-10">
+                <button onclick="hideAddTransactionModal()" class="flex-1 py-4 rounded-3xl border border-white/30">Cancel</button>
+                <button onclick="saveTransaction()" class="flex-1 py-4 bg-emerald-500 hover:bg-emerald-400 rounded-3xl font-semibold">Save transaction</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ADD GOAL MODAL -->
+    <div onclick="if(event.target.id === 'goal-modal') hideAddGoalModal()" id="goal-modal" class="hidden fixed inset-0 bg-black/70 z-[10000] flex items-center justify-center">
+        <div class="modal bg-zinc-900 w-full max-w-lg mx-4 rounded-3xl p-8">
+            <h3 class="text-2xl font-semibold mb-6">New Savings Goal</h3>
+            
+            <div class="space-y-6">
+                <div>
+                    <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Goal name</label>
+                    <input id="goal-name" type="text" placeholder="New car • Vacation • Emergency fund" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Target amount</label>
+                        <input id="goal-target" type="number" placeholder="5000" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-xs uppercase tracking-widest block mb-2 text-zinc-400">Target date</label>
+                        <input id="goal-date" type="date" class="w-full bg-white/10 border border-white/20 rounded-3xl px-6 py-4 outline-none">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-x-4 mt-10">
+                <button onclick="hideAddGoalModal()" class="flex-1 py-4 rounded-3xl border border-white/30">Cancel</button>
+                <button onclick="saveNewGoal()" class="flex-1 py-4 bg-emerald-500 hover:bg-emerald-400 rounded-3xl font-semibold">Create goal</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // TailwindCSS initialization
+        function initializeTailwind() {
+            return {
+                config(userConfig = {}) {
+                    return {
+                        content: [],
+                        theme: {
+                            extend: {},
+                        },
+                        plugins: [],
+                        ...userConfig,
+                    }
+                },
+                theme: {
+                    extend: {},
+                },
+            }
+        }
+        
+        // Global app state
+        let transactions = []
+        let budgets = {}
+        let goals = []
+        let categories = ["Salary", "Rent", "Groceries", "Utilities", "Transportation", "Dining Out", "Entertainment", "Investment Income", "Healthcare", "Shopping", "Other"]
+        let currentPage = 0
+        let editingTransactionId = null
+        let importData = null
+        let importMapping = { date: null, description: null, amount: null }
+        let currentBankPreset = null
+        
+        // Sample data for first-time users
+        function loadSampleData() {
+            const sampleTransactions = [
+                { id: 1743700800000, date: "2026-04-01", description: "Paycheck - Acme Corp", amount: 3150, category: "Salary" },
+                { id: 1743614400000, date: "2026-03-31", description: "Whole Foods Market", amount: -87.42, category: "Groceries" },
+                { id: 1743528000000, date: "2026-03-30", description: "Rent payment", amount: -1450, category: "Rent" },
+                { id: 1743441600000, date: "2026-03-29", description: "Vanguard dividend", amount: 42.18, category: "Investment Income" },
+                { id: 1743355200000, date: "2026-03-28", description: "Gas station", amount: -38.75, category: "Transportation" },
+                { id: 1743268800000, date: "2026-03-27", description: "Netflix", amount: -15.49, category: "Entertainment" },
+            ]
+            transactions = sampleTransactions
+            
+            budgets = {
+                "Groceries": 400,
+                "Rent": 1450,
+                "Transportation": 200,
+                "Dining Out": 150,
+                "Entertainment": 100
+            }
+            
+            goals = [
+                { id: 1, name: "Emergency Fund", target: 5000, current: 3650, deadline: "2026-12-31" },
+                { id: 2, name: "Europe Trip", target: 3200, current: 890, deadline: "2026-08-15" }
+            ]
+            
+            localStorage.setItem("impressive_data", JSON.stringify({
+                transactions: transactions,
+                budgets: budgets,
+                goals: goals,
+                categories: categories
+            }))
+        }
+        
+        // Load data from localStorage
+        function loadData() {
+            const saved = localStorage.getItem("impressive_data")
+            if (saved) {
+                const data = JSON.parse(saved)
+                transactions = data.transactions || []
+                budgets = data.budgets || {}
+                goals = data.goals || []
+                categories = data.categories || categories
+            } else {
+                loadSampleData()
+            }
+        }
+        
+        // Save data to localStorage
+        function saveData() {
+            localStorage.setItem("impressive_data", JSON.stringify({
+                transactions: transactions,
+                budgets: budgets,
+                goals: goals,
+                categories: categories
+            }))
+            document.getElementById("last-saved").textContent = "just now"
+            setTimeout(() => {
+                if (document.getElementById("last-saved")) document.getElementById("last-saved").textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+            }, 3000)
+            renderSidebarBalance()
+        }
+        
+        // Navigation
+        function navigateTo(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'))
+            document.getElementById(`page-${page}`).classList.remove('hidden')
+            
+            // Update active nav
+            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'))
+            const activeNav = document.getElementById(`nav-${page}`)
+            if (activeNav) activeNav.classList.add('active')
+            
+            currentPage = page
+            
+            // Render page-specific content
+            if (page === 0) renderDashboard()
+            else if (page === 1) renderTransactions()
+            else if (page === 2) renderBudgets()
+            else if (page === 3) renderGoals()
+            else if (page === 4) updateImportStats()
+        }
+        
+        // Render sidebar and mobile balance
+        function renderSidebarBalance() {
+            const total = transactions.reduce((sum, t) => sum + t.amount, 0)
+            const formatted = total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+            const els = document.querySelectorAll('#sidebar-balance, #mobile-balance')
+            els.forEach(el => { if (el) el.textContent = formatted })
+        }
+        
+        // Dashboard rendering
+        let trendChartInstance = null
+        let pieChartInstance = null
+        
+        function renderDashboard() {
+            // Balance
+            const total = transactions.reduce((sum, t) => sum + t.amount, 0)
+            document.getElementById("dashboard-balance").textContent = total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+            
+            // This month income / expenses
+            const now = new Date()
+            const thisMonth = transactions.filter(t => {
+                const d = new Date(t.date)
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+            })
+            
+            const income = thisMonth.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
+            const expenses = thisMonth.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0)
+            
+            document.getElementById("dashboard-income").textContent = income.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+            document.getElementById("dashboard-expenses").textContent = expenses.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+            
+            // Trend chart
+            const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+            const last6 = []
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date()
+                d.setMonth(d.getMonth() - i)
+                const monthTransactions = transactions.filter(t => {
+                    const td = new Date(t.date)
+                    return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear()
+                })
+                const balance = monthTransactions.reduce((sum, t) => sum + t.amount, 0)
+                last6.push({ month: months[d.getMonth()], balance: balance })
+            }
+            
+            const ctxTrend = document.getElementById("trend-chart")
+            if (trendChartInstance) trendChartInstance.destroy()
+            trendChartInstance = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: last6.map(m => m.month),
+                    datasets: [{
+                        label: 'Net balance',
+                        data: last6.map(m => m.balance),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { grid: { color: '#27272a' }, ticks: { color: '#a3a3a3', font: { size: 11 } } },
+                        x: { grid: { color: '#27272a' }, ticks: { color: '#a3a3a3', font: { size: 11 } } }
+                    }
+                }
+            })
+            
+            // Pie chart – top expense categories
+            const expenseByCat = {}
+            transactions.filter(t => t.amount < 0).forEach(t => {
+                const cat = t.category || "Other"
+                expenseByCat[cat] = (expenseByCat[cat] || 0) + Math.abs(t.amount)
+            })
+            
+            const pieLabels = Object.keys(expenseByCat)
+            const pieData = Object.values(expenseByCat)
+            
+            const ctxPie = document.getElementById("pie-chart")
+            if (pieChartInstance) pieChartInstance.destroy()
+            pieChartInstance = new Chart(ctxPie, {
+                type: 'doughnut',
+                data: {
+                    labels: pieLabels,
+                    datasets: [{
+                        data: pieData,
+                        backgroundColor: ['#10b981','#34d399','#a3e4c3','#6ee7b7','#10b981'],
+                        borderColor: '#27272a',
+                        borderWidth: 5
+                    }]
+                },
+                options: {
+                    cutout: '78%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { boxWidth: 10, padding: 22, color: '#d1d5db', font: { size: 13 } }
+                        }
+                    }
+                }
+            })
+            
+            // Next goal
+            if (goals.length > 0) {
+                const next = goals[0]
+                const percent = Math.min(Math.round((next.current / next.target) * 100), 100)
+                document.getElementById("next-goal-name").textContent = next.name
+                document.getElementById("next-goal-progress-bar").style.width = percent + "%"
+                document.getElementById("next-goal-stats").innerHTML = `
+                    <div>$${next.current.toLocaleString()} of $${next.target.toLocaleString()}</div>
+                    <div>${percent}%</div>
+                `
+            }
+            
+            renderSidebarBalance()
+        }
+        
+        // Render full transactions list
+        function renderTransactions(filteredTransactions = null) {
+            const tbody = document.getElementById("transactions-body")
+            tbody.innerHTML = ""
+            
+            const list = filteredTransactions || transactions.sort((a,b) => new Date(b.date) - new Date(a.date))
+            
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-12 text-center text-zinc-400">No transactions yet.<br><span onclick="navigateTo(4)" class="underline cursor-pointer">Import your first CSV</span></td></tr>`
+                return
+            }
+            
+            list.forEach(t => {
+                const row = document.createElement("tr")
+                const amountHTML = t.amount >= 0 
+                    ? `<td class="text-right py-5 px-8 font-medium text-emerald-400">+${t.amount.toLocaleString('en-US', {style:'currency',currency:'USD'})}</td>` 
+                    : `<td class="text-right py-5 px-8 font-medium text-red-400">${t.amount.toLocaleString('en-US', {style:'currency',currency:'USD'})}</td>`
+                
+                row.innerHTML = `
+                    <td class="py-5 px-8">${new Date(t.date).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})}</td>
+                    <td class="py-5 px-8">${t.description}</td>
+                    <td class="py-5 px-8"><span class="inline-block px-3 py-px text-xs rounded-3xl bg-white/10">${t.category || '—'}</span></td>
+                    ${amountHTML}
+                    <td class="py-5 px-8 text-right">
+                        <button onclick="editTransaction(${t.id});event.stopImmediatePropagation()" class="text-emerald-400 hover:text-white mr-4">✏️</button>
+                        <button onclick="deleteTransaction(${t.id});event.stopImmediatePropagation()" class="text-red-400 hover:text-white">🗑️</button>
+                    </td>
+                `
+                tbody.appendChild(row)
+            })
+        }
+        
+        function filterTransactions() {
+            const term = (document.getElementById("search-input").value || "").toLowerCase().trim()
+            if (!term) {
+                renderTransactions()
+                return
+            }
+            const filtered = transactions.filter(t => 
+                t.description.toLowerCase().includes(term) || 
+                (t.category && t.category.toLowerCase().includes(term))
+            )
+            renderTransactions(filtered)
+        }
+        
+        // Add / edit transaction
+        function showAddTransactionModal(id = null) {
+            editingTransactionId = id
+            const modal = document.getElementById("add-modal")
+            modal.classList.remove("hidden")
+            modal.classList.add("flex")
+            
+            // Populate categories
+            const select = document.getElementById("modal-category")
+            select.innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join("")
+            
+            if (id) {
+                const tx = transactions.find(t => t.id === id)
+                if (tx) {
+                    document.getElementById("modal-date").value = tx.date
+                    document.getElementById("modal-desc").value = tx.description
+                    document.getElementById("modal-amount").value = Math.abs(tx.amount)
+                    setModalType(tx.amount > 0 ? 1 : -1)
+                    select.value = tx.category || ""
+                }
+            } else {
+                document.getElementById("modal-date").value = "2026-04-03"
+                document.getElementById("modal-desc").value = ""
+                document.getElementById("modal-amount").value = ""
+                setModalType(-1)
+            }
+        }
+        
+        function hideAddTransactionModal() {
+            const modal = document.getElementById("add-modal")
+            modal.classList.add("hidden")
+            modal.classList.remove("flex")
+            editingTransactionId = null
+        }
+        
+        function setModalType(sign) {
+            const incomeBtn = document.getElementById("modal-type-income")
+            const expenseBtn = document.getElementById("modal-type-expense")
+            if (sign > 0) {
+                incomeBtn.classList.add("bg-emerald-500", "text-white")
+                expenseBtn.classList.remove("bg-emerald-500", "text-white")
+            } else {
+                expenseBtn.classList.add("bg-emerald-500", "text-white")
+                incomeBtn.classList.remove("bg-emerald-500", "text-white")
+            }
+        }
+        
+        function saveTransaction() {
+            const date = document.getElementById("modal-date").value
+            const desc = document.getElementById("modal-desc").value.trim()
+            let amount = parseFloat(document.getElementById("modal-amount").value)
+            const typeBtn = document.getElementById("modal-type-expense").classList.contains("bg-emerald-500") ? -1 : 1
+            const category = document.getElementById("modal-category").value
+            
+            if (!date || !desc || isNaN(amount)) {
+                alert("Please fill out date, description and amount")
+                return
+            }
+            
+            amount = amount * typeBtn
+            
+            if (editingTransactionId) {
+                const tx = transactions.find(t => t.id === editingTransactionId)
+                if (tx) {
+                    tx.date = date
+                    tx.description = desc
+                    tx.amount = amount
+                    tx.category = category
+                }
+            } else {
+                transactions.unshift({
+                    id: Date.now(),
+                    date: date,
+                    description: desc,
+                    amount: amount,
+                    category: category
+                })
+            }
+            
+            saveData()
+            hideAddTransactionModal()
+            renderTransactions()
+            if (currentPage === 0) renderDashboard()
+        }
+        
+        function editTransaction(id) {
+            hideAddTransactionModal() // close any open
+            showAddTransactionModal(id)
+        }
+        
+        function deleteTransaction(id) {
+            if (confirm("Delete this transaction permanently?")) {
+                transactions = transactions.filter(t => t.id !== id)
+                saveData()
+                renderTransactions()
+                if (currentPage === 0) renderDashboard()
+            }
+        }
+        
+        // Budgets
+        function renderBudgets() {
+            const container = document.getElementById("budgets-list")
+            container.innerHTML = ""
+            
+            // Calculate current month spending per category
+            const now = new Date()
+            const spent = {}
+            transactions.filter(t => {
+                const d = new Date(t.date)
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && t.amount < 0
+            }).forEach(t => {
+                const cat = t.category || "Other"
+                spent[cat] = (spent[cat] || 0) + Math.abs(t.amount)
+            })
+            
+            Object.keys(budgets).forEach(cat => {
+                const limit = budgets[cat]
+                const used = spent[cat] || 0
+                const percent = Math.min(Math.round((used / limit) * 100), 100)
+                
+                const color = percent > 90 ? "bg-red-400" : percent > 70 ? "bg-amber-400" : "bg-emerald-400"
+                
+                const card = document.createElement("div")
+                card.className = "card bg-white/5 border border-white/10 rounded-3xl p-6"
+                card.innerHTML = `
+                    <div class="flex justify-between">
+                        <div class="font-semibold">${cat}</div>
+                        <div class="text-xs text-zinc-400">${used.toLocaleString('en-US', {style:'currency',currency:'USD'})} / ${limit.toLocaleString('en-US', {style:'currency',currency:'USD'})}</div>
+                    </div>
+                    <div class="h-2.5 mt-6 mb-2 bg-white/10 rounded-3xl overflow-hidden">
+                        <div class="${color} h-2.5" style="width: ${percent}%"></div>
+                    </div>
+                    <div class="text-xs flex justify-between text-zinc-400"><span>${percent}% used</span><span class="cursor-pointer hover:text-red-400" onclick="deleteBudget('${cat}')">remove</span></div>
+                `
+                container.appendChild(card)
+            })
+            
+            // Uncategorized spending
+            if (Object.keys(spent).some(k => !budgets[k])) {
+                const uncatHTML = Object.keys(spent).filter(k => !budgets[k]).map(k => {
+                    return `<div class="flex justify-between text-sm"><span>${k}</span><span class="text-red-400">$${spent[k].toFixed(2)}</span></div>`
+                }).join("")
+                const extra = document.createElement("div")
+                extra.className = "card bg-white/5 border border-white/10 rounded-3xl p-6 text-zinc-400"
+                extra.innerHTML = `<p class="text-xs uppercase mb-3">Unbudgeted spending this month</p>${uncatHTML}`
+                container.appendChild(extra)
+            }
+        }
+        
+        function addBudget() {
+            const cat = document.getElementById("new-budget-cat").value.trim()
+            const limit = parseFloat(document.getElementById("new-budget-limit").value)
+            if (cat && limit) {
+                budgets[cat] = limit
+                saveData()
+                renderBudgets()
+                document.getElementById("new-budget-cat").value = ""
+                document.getElementById("new-budget-limit").value = ""
+            }
+        }
+        
+        function deleteBudget(cat) {
+            if (confirm(`Remove ${cat} budget?`)) {
+                delete budgets[cat]
+                saveData()
+                renderBudgets()
+            }
+        }
+        
+        // Goals
+        function renderGoals() {
+            const container = document.getElementById("goals-grid")
+            container.innerHTML = ""
+            
+            goals.forEach((goal, i) => {
+                const percent = Math.min(Math.round((goal.current / goal.target) * 100), 100)
+                const card = document.createElement("div")
+                card.className = "card bg-white/5 border border-white/10 rounded-3xl p-6"
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="font-semibold text-lg">${goal.name}</div>
+                            <div class="text-xs text-zinc-400 mt-1">${new Date(goal.deadline).toLocaleDateString('en-US', {month:'long', year:'numeric'})}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-emerald-400 font-mono text-2xl">$${goal.current}</div>
+                            <div class="text-xs text-zinc-400">of $${goal.target}</div>
+                        </div>
+                    </div>
+                    <div class="mt-8 h-3 bg-white/10 rounded-3xl overflow-hidden">
+                        <div class="h-3 bg-gradient-to-r from-emerald-400 to-teal-400" style="width: ${percent}%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs mt-3">
+                        <div>${percent}% complete</div>
+                        <div onclick="deleteGoal(${i});event.stopImmediatePropagation()" class="cursor-pointer text-red-400 text-xs hover:underline">Delete</div>
+                    </div>
+                `
+                container.appendChild(card)
+            })
+            
+            if (goals.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-12 text-zinc-400">No goals yet.<br>Click “New Goal” above to create your first savings target.</div>`
+            }
+        }
+        
+        function showAddGoalModal() {
+            const modal = document.getElementById("goal-modal")
+            modal.classList.remove("hidden")
+            modal.classList.add("flex")
+            document.getElementById("goal-name").value = ""
+            document.getElementById("goal-target").value = ""
+            document.getElementById("goal-date").value = "2026-12-31"
+        }
+        
+        function hideAddGoalModal() {
+            const modal = document.getElementById("goal-modal")
+            modal.classList.add("hidden")
+            modal.classList.remove("flex")
+        }
+        
+        function saveNewGoal() {
+            const name = document.getElementById("goal-name").value.trim()
+            const target = parseFloat(document.getElementById("goal-target").value)
+            const deadline = document.getElementById("goal-date").value
+            
+            if (name && target) {
+                goals.unshift({
+                    id: Date.now(),
+                    name: name,
+                    target: target,
+                    current: 0,
+                    deadline: deadline
+                })
+                saveData()
+                hideAddGoalModal()
+                renderGoals()
+            }
+        }
+        
+        function deleteGoal(index) {
+            if (confirm("Delete this savings goal?")) {
+                goals.splice(index, 1)
+                saveData()
+                renderGoals()
+            }
+        }
+        
+        // CSV EXPORT
+        function exportCSV() {
+            if (transactions.length === 0) {
+                alert("No transactions to export yet!")
+                return
+            }
+            
+            let csvContent = "Date,Description,Amount,Category\n"
+            
+            transactions.forEach(t => {
+                const safeDesc = `"${t.description.replace(/"/g, '""')}"`
+                csvContent += `${t.date},${safeDesc},${t.amount},${t.category || ''}\n`
+            })
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+            const link = document.createElement("a")
+            const url = URL.createObjectURL(blob)
+            link.setAttribute("href", url)
+            link.setAttribute("download", `Impre$$ive-export-${new Date().toISOString().slice(0,10)}.csv`)
+            link.style.visibility = 'hidden'
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            
+            // Record last export
+            document.getElementById("last-export").textContent = "just now"
+        }
+        
+        // CSV IMPORT – with U.S. Bank & Vanguard presets
+        function setBankPreset(preset) {
+            // 0 = U.S. Bank, 1 = Vanguard, 2 = Custom
+            currentBankPreset = preset
+            document.getElementById("preset-usbank").classList.toggle("border-emerald-500", preset === 0)
+            document.getElementById("preset-usbank").classList.toggle("text-emerald-400", preset === 0)
+            document.getElementById("preset-vanguard").classList.toggle("border-emerald-500", preset === 1)
+            document.getElementById("preset-vanguard").classList.toggle("text-emerald-400", preset === 1)
+            document.getElementById("preset-custom").classList.toggle("border-emerald-500", preset === 2)
+            document.getElementById("preset-custom").classList.toggle("text-emerald-400", preset === 2)
+            
+            // Clear previous preview
+            document.getElementById("import-preview").classList.add("hidden")
+            importData = null
+        }
+        
+        function handleCSVUpload(e) {
+            const file = e.target.files[0]
+            if (!file) return
+            
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.errors.length > 0 && results.errors[0].code !== "UndetectableDelimiter") {
+                        console.warn(results.errors)
+                    }
+                    
+                    importData = results.data
+                    
+                    // Auto-detect mapping based on preset
+                    let headers = Object.keys(importData[0] || {})
+                    
+                    if (currentBankPreset === 0) { // U.S. Bank
+                        importMapping.date = headers.find(h => /date|posted|transaction date/i.test(h)) || headers[0]
+                        importMapping.description = headers.find(h => /description|payee|memo/i.test(h)) || headers[1]
+                        importMapping.amount = headers.find(h => /amount|debit|credit|balance/i.test(h)) || headers[2]
+                    } else if (currentBankPreset === 1) { // Vanguard
+                        importMapping.date = headers.find(h => /date|trade|settlement/i.test(h)) || headers[0]
+                        importMapping.description = headers.find(h => /description|name|investment|symbol/i.test(h)) || headers[1]
+                        importMapping.amount = headers.find(h => /amount|total|proceeds|cost/i.test(h)) || headers[3]
+                    } else {
+                        // Custom – show all columns for manual mapping later (but we auto-pick first three for demo)
+                        importMapping.date = headers[0]
+                        importMapping.description = headers[1]
+                        importMapping.amount = headers[2]
+                    }
+                    
+                    showImportPreview(importData, headers)
+                }
+            })
+        }
+        
+        function showImportPreview(data, headers) {
+            const previewDiv = document.getElementById("import-preview")
+            previewDiv.classList.remove("hidden")
+            
+            document.getElementById("import-count").textContent = data.length + " rows"
+            
+            let html = `<thead><tr class="text-[10px] uppercase text-zinc-400">`
+            headers.forEach(h => html += `<th class="px-3 py-2 text-left">${h}</th>`)
+            html += `</tr></thead><tbody>`
+            
+            // Show first 6 rows
+            data.slice(0, 6).forEach(row => {
+                html += `<tr class="border-b border-white/10">`
+                headers.forEach(h => {
+                    let val = row[h] || ""
+                    if (h === importMapping.amount) val = parseFloat(val) || val
+                    html += `<td class="px-3 py-2 text-xs">${val}</td>`
+                })
+                html += `</tr>`
+            })
+            html += `</tbody>`
+            document.getElementById("preview-table").innerHTML = html
+        }
+        
+        function cancelImport() {
+            document.getElementById("import-preview").classList.add("hidden")
+            document.getElementById("csv-upload").value = ""
+            importData = null
+            currentBankPreset = null
+        }
+        
+        function confirmImport() {
+            if (!importData || !importMapping.date || !importMapping.description || !importMapping.amount) {
+                alert("Mapping not ready. Please try again.")
+                return
+            }
+            
+            let importedCount = 0
+            
+            importData.forEach(row => {
+                let rawAmount = row[importMapping.amount]
+                let amount = parseFloat(String(rawAmount).replace(/[$,]/g, ''))
+                
+                if (isNaN(amount)) return
+                
+                // Many bank CSVs use negative for expenses – keep sign
+                const dateStr = row[importMapping.date]
+                let parsedDate = null
+                
+                // Try multiple date formats
+                try {
+                    const d = new Date(dateStr)
+                    if (!isNaN(d)) parsedDate = d.toISOString().split('T')[0]
+                } catch(e) {}
+                
+                if (!parsedDate) return
+                
+                const newTx = {
+                    id: Date.now() + Math.random() * 1000000,
+                    date: parsedDate,
+                    description: String(row[importMapping.description] || "Imported transaction").trim(),
+                    amount: amount,
+                    category: "Imported" // user can edit later
+                }
+                
+                // Simple duplicate check
+                const isDuplicate = transactions.some(existing => 
+                    existing.date === newTx.date && 
+                    Math.abs(existing.amount - newTx.amount) < 0.01 &&
+                    existing.description.toLowerCase() === newTx.description.toLowerCase()
+                )
+                
+                if (!isDuplicate) {
+                    transactions.unshift(newTx)
+                    importedCount++
+                }
+            })
+            
+            saveData()
+            cancelImport()
+            
+            alert(`✅ Successfully imported ${importedCount} new transactions from ${currentBankPreset === 0 ? 'U.S. Bank' : currentBankPreset === 1 ? 'Vanguard' : 'your CSV'}!`)
+            
+            // Refresh current page
+            if (currentPage === 1) renderTransactions()
+            else if (currentPage === 0) renderDashboard()
+            else navigateTo(1)
+        }
+        
+        function updateImportStats() {
+            document.getElementById("stat-transactions").textContent = transactions.length
+            document.getElementById("stat-budgets").textContent = Object.keys(budgets).length
+            document.getElementById("stat-goals").textContent = goals.length
+        }
+        
+        // Clear everything
+        function clearAllData() {
+            if (confirm("⚠️ This will delete ALL your data permanently. Are you sure?")) {
+                localStorage.removeItem("impressive_data")
+                transactions = []
+                budgets = {}
+                goals = []
+                loadSampleData()
+                alert("App reset with fresh sample data.")
+                navigateTo(0)
+            }
+        }
+        
+        function toggleMobileMenu() {
+            const menu = document.getElementById("mobile-menu")
+            menu.classList.toggle("hidden")
+        }
+        
+        // App bootstrap
+        function startApp() {
+            initializeTailwind()
+            loadData()
+            renderSidebarBalance()
+            navigateTo(0) // start on dashboard
+            
+            console.log('%c✅ Impre$$ive personal finance app ready! Single HTML file with full CSV import/export for U.S. Bank & Vanguard.', 'background:#10b981;color:#fff;padding:1px 3px;border-radius:2px')
+        }
+        
+        // Launch
+        window.onload = startApp
+    </script>
+</body>
+</html>
