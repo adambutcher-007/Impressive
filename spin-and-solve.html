@@ -28,7 +28,7 @@ body{
   flex-direction:column;
   overflow-x:hidden;
 }
-.screen{display:none;flex-direction:column;flex:1;min-height:100vh;padding:14px;position:relative;}
+.screen{display:none;flex-direction:column;flex:1;min-height:100vh;padding:14px;position:relative;z-index:0;}
 .screen.active{display:flex;}
 @media (min-width:700px){
   .screen{max-width:640px;margin:0 auto;width:100%;}
@@ -191,15 +191,16 @@ label{font-size:12px;color:#b9c3ff;text-transform:uppercase;letter-spacing:.06em
   margin-bottom:6px;
   overflow:visible;
   pointer-events:none;
-  z-index:1;
+  z-index:0;
 }
 .wheel-wrap{
   position:absolute;
-  bottom:-62%;
+  top:0;
   width:clamp(260px,92vw,480px);
   height:clamp(260px,92vw,480px);
   display:flex;align-items:center;justify-content:center;
   pointer-events:none;
+  z-index:1;
 }
 .wheel-wrap svg{
   width:100%;height:100%;
@@ -211,6 +212,7 @@ label{font-size:12px;color:#b9c3ff;text-transform:uppercase;letter-spacing:.06em
   background:radial-gradient(circle at 35% 30%, #fff6d0, var(--gold) 55%, var(--gold-dp) 100%);
   border:3px solid #7a5810;
   box-shadow:0 3px 8px rgba(0,0,0,.5);
+  z-index:2;
 }
 .pointer{
   position:absolute;
@@ -223,11 +225,20 @@ label{font-size:12px;color:#b9c3ff;text-transform:uppercase;letter-spacing:.06em
   z-index:5;
 }
 .wheel-result{
-  position:absolute;top:6px;left:0;right:0;text-align:center;
-  font-weight:900;font-size:20px;color:var(--gold);
-  text-shadow:0 2px 6px rgba(0,0,0,.7);
-  min-height:26px;
+  position:absolute;top:30px;left:50%;transform:translateX(-50%);
+  text-align:center;
+  font-weight:900;font-size:22px;color:#1a1200;
+  background:linear-gradient(180deg,#fff9e0,var(--gold));
+  border:2px solid var(--gold-dp);
+  border-radius:10px;
+  padding:4px 14px;
+  min-width:90px;
+  min-height:20px;
+  box-shadow:0 4px 10px rgba(0,0,0,.5);
+  z-index:6;
+  white-space:nowrap;
 }
+.wheel-result:empty{display:none;}
 
 /* ---------- Keyboard ---------- */
 .keyboard{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin:8px 0;}
@@ -257,11 +268,15 @@ label{font-size:12px;color:#b9c3ff;text-transform:uppercase;letter-spacing:.06em
 .topbar .pill{cursor:pointer;}
 .iconbtn{background:rgba(255,255,255,.08);color:#fff;border-radius:8px;padding:8px 12px;font-size:13px;}
 
+.controls-panel{position:relative;z-index:3;}
+.board,.scoreboard,.category-banner,.topbar{position:relative;z-index:2;}
 .footer-actions{margin-top:auto;display:flex;justify-content:center;gap:8px;padding-top:10px;flex-wrap:wrap;}
 
 .timer-big{font-size:44px;font-weight:900;color:var(--gold);text-align:center;}
 .timer-big.warn{color:var(--red);animation:pulse .5s infinite;}
 @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.08);}}
+
+.wedge-win{stroke:#fff !important;stroke-width:5 !important;filter:drop-shadow(0 0 10px #fff9e0);}
 
 .presentation .controls-panel{display:none !important;}
 .present-toggle{position:fixed;bottom:14px;right:14px;z-index:20;}
@@ -281,6 +296,7 @@ label{font-size:12px;color:#b9c3ff;text-transform:uppercase;letter-spacing:.06em
 
 <!-- ================= WELCOME SCREEN ================= -->
 <div id="screen-welcome" class="screen active">
+  <button class="iconbtn" style="position:absolute;top:14px;right:14px;z-index:10;" onclick="toggleSound()" id="sound-toggle-btn-welcome">🔊</button>
   <div class="logo">
     <div class="lights"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <div class="title">SPIN &amp; SOLVE</div>
@@ -348,7 +364,10 @@ label{font-size:12px;color:#b9c3ff;text-transform:uppercase;letter-spacing:.06em
   <div class="topbar controls-panel">
     <button class="iconbtn" onclick="confirmQuit()">✕ Quit</button>
     <span class="pill" id="round-pill">Round 1</span>
-    <button class="iconbtn" onclick="togglePresentation(true)">🖥 Present</button>
+    <div style="display:flex;gap:6px;">
+      <button class="iconbtn" onclick="toggleSound()" id="sound-toggle-btn">🔊</button>
+      <button class="iconbtn" onclick="togglePresentation(true)">🖥 Present</button>
+    </div>
   </div>
 
   <div class="scoreboard" id="scoreboard"></div>
@@ -571,6 +590,119 @@ const VOWEL_COST = 250;
 const BONUS_TIME = 20;
 const SAVE_KEY = "spinsolve_save_v1";
 const STATS_KEY = "spinsolve_stats_v1";
+const SOUND_KEY = "spinsolve_sound_v1";
+
+/* =========================================================
+   SOUND ENGINE (pure Web Audio API — no external audio files)
+   ========================================================= */
+const Sound = (function(){
+  let ctx = null;
+  let enabled = true;
+
+  function ensureCtx(){
+    if(!ctx){
+      try{ ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e){ return null; }
+    }
+    if(ctx.state === "suspended"){ ctx.resume(); }
+    return ctx;
+  }
+
+  function tone(freq, dur, type, vol, glideTo){
+    if(!enabled) return;
+    const c = ensureCtx(); if(!c) return;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = type || "sine";
+    const t0 = c.currentTime;
+    osc.frequency.setValueAtTime(freq, t0);
+    if(glideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(glideTo,1), t0+dur);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.linearRampToValueAtTime(vol, t0+0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    osc.connect(gain).connect(c.destination);
+    osc.start(t0);
+    osc.stop(t0+dur+0.03);
+  }
+
+  function noiseBurst(dur, vol, freq, q){
+    if(!enabled) return;
+    const c = ensureCtx(); if(!c) return;
+    const bufferSize = Math.max(1, Math.floor(c.sampleRate*dur));
+    const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++){ data[i] = Math.random()*2-1; }
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    const filter = c.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = freq;
+    filter.Q.value = q;
+    const gain = c.createGain();
+    const t0 = c.currentTime;
+    gain.gain.setValueAtTime(vol, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+    src.connect(filter).connect(gain).connect(c.destination);
+    src.start(t0);
+  }
+
+  function click(){ tone(680,0.05,"square",0.10); }
+  function tick(){ noiseBurst(0.032,0.32,3000,7); }
+
+  function letterHit(){
+    tone(523.25,0.12,"sine",0.24);
+    setTimeout(()=>tone(783.99,0.20,"sine",0.24),90);
+  }
+  function letterMiss(){ tone(190,0.30,"sawtooth",0.20,85); }
+  function turnChange(){ tone(420,0.14,"triangle",0.16,240); }
+  function bankrupt(){
+    tone(320,0.22,"sawtooth",0.24,140);
+    setTimeout(()=>tone(220,0.45,"sawtooth",0.24,70),160);
+  }
+  function loseTurn(){ tone(260,0.22,"square",0.16,150); }
+  function vowelBuy(){
+    tone(660,0.07,"square",0.14);
+    setTimeout(()=>tone(880,0.10,"square",0.14),65);
+  }
+  function puzzleSolved(){
+    [523.25,659.25,783.99,1046.5].forEach((f,i)=>setTimeout(()=>tone(f,0.24,"sine",0.26),i*120));
+  }
+  function win(){
+    [523.25,659.25,783.99,1046.5,1318.51].forEach((f,i)=>setTimeout(()=>tone(f,0.34,"triangle",0.28),i*150));
+  }
+  function timerTick(urgent){ tone(urgent?1046.5:880, 0.05, "square", urgent?0.20:0.12); }
+  function timeUp(){ tone(160,0.6,"sawtooth",0.28,80); }
+  function modalOpen(){ tone(500,0.06,"sine",0.10,650); }
+
+  function scheduleWheelTicks(duration){
+    const N = 34;
+    const p = 2.3;
+    for(let i=1;i<=N;i++){
+      const t = duration*Math.pow(i/N,p);
+      setTimeout(tick, t);
+    }
+  }
+
+  function setEnabled(v){
+    enabled = v;
+    try{ localStorage.setItem(SOUND_KEY, v?"1":"0"); }catch(e){}
+    document.querySelectorAll("#sound-toggle-btn,#sound-toggle-btn-welcome").forEach(b=>{ if(b) b.textContent = v ? "🔊" : "🔇"; });
+  }
+  function isEnabled(){ return enabled; }
+  function loadPref(){
+    try{
+      const v = localStorage.getItem(SOUND_KEY);
+      if(v !== null) enabled = (v === "1");
+    }catch(e){}
+    document.querySelectorAll("#sound-toggle-btn,#sound-toggle-btn-welcome").forEach(b=>{ if(b) b.textContent = enabled ? "🔊" : "🔇"; });
+  }
+
+  return {ensureCtx, click, tick, letterHit, letterMiss, turnChange, bankrupt, loseTurn,
+    vowelBuy, puzzleSolved, win, timerTick, timeUp, modalOpen, scheduleWheelTicks,
+    setEnabled, isEnabled, loadPref};
+})();
+
+function toggleSound(){ Sound.setEnabled(!Sound.isEnabled()); Sound.click(); }
 
 /* =========================================================
    STATE
@@ -622,6 +754,12 @@ function saveStats(stats){
    INIT
    ========================================================= */
 window.addEventListener("DOMContentLoaded", ()=>{
+  Sound.loadPref();
+  document.addEventListener("click", (e)=>{
+    const btn = e.target.closest("button");
+    if(btn) Sound.click();
+  }, true);
+
   const saved = loadState();
   renderLifetimeStats();
   if(saved && saved.screen && saved.screen !== "welcome" && saved.screen !== "final"){
@@ -827,23 +965,46 @@ function buildWheel(svgId, wedges){
     path.setAttribute("fill",fill);
     path.setAttribute("stroke","#f4c94b");
     path.setAttribute("stroke-width","1.5");
+    path.setAttribute("data-idx", i);
     svg.appendChild(path);
 
+    // Stack each character vertically along the radial direction so labels
+    // never overlap into neighboring wedges, no matter how narrow the wedge is.
     const mid = (a0+a1)/2;
-    const tx = cx + (r*0.62)*Math.cos(mid);
-    const ty = cy + (r*0.62)*Math.sin(mid);
+    const midDeg = mid*180/Math.PI;
+    const chars = w.label.replace(/,/g,"").split("").filter(ch=>ch!==" ");
+    const fontSize = chars.length > 8 ? 11 : chars.length > 6 ? 13 : chars.length > 4 ? 15 : 18;
+    const lineHeight = fontSize * 1.02;
+    const totalHeight = (chars.length-1)*lineHeight;
+    const startRadius = r*0.90; // start near the rim
+    const anchorX = cx + startRadius*Math.cos(mid);
+    const anchorY = cy + startRadius*Math.sin(mid);
     const text = document.createElementNS(ns,"text");
-    text.setAttribute("x",tx); text.setAttribute("y",ty);
     text.setAttribute("fill","#fff");
-    text.setAttribute("font-size", w.label.length>8 ? "12":"15");
+    text.setAttribute("font-size", fontSize);
     text.setAttribute("font-weight","800");
     text.setAttribute("text-anchor","middle");
-    text.setAttribute("dominant-baseline","middle");
-    const deg = mid*180/Math.PI + 90;
-    text.setAttribute("transform",`rotate(${deg} ${tx} ${ty})`);
-    text.textContent = w.label;
+    text.setAttribute("transform", `translate(${anchorX} ${anchorY}) rotate(${midDeg-90})`);
+    chars.forEach((ch,idx)=>{
+      const tspan = document.createElementNS(ns,"tspan");
+      tspan.setAttribute("x", 0);
+      tspan.setAttribute("y", idx*lineHeight - totalHeight/2 + fontSize/3);
+      tspan.textContent = ch;
+      text.appendChild(tspan);
+    });
+    text.setAttribute("data-idx", i);
     svg.appendChild(text);
   }
+}
+
+function highlightWedge(svgId, index){
+  const svg = document.getElementById(svgId);
+  svg.querySelectorAll(".wedge-win").forEach(el=>el.classList.remove("wedge-win"));
+  const path = svg.querySelector(`path[data-idx="${index}"]`);
+  if(path) path.classList.add("wedge-win");
+}
+function clearHighlight(svgId){
+  document.getElementById(svgId).querySelectorAll(".wedge-win").forEach(el=>el.classList.remove("wedge-win"));
 }
 
 function spinToIndex(svgId, wedges, targetIndex, extraSpins, durationMs){
@@ -880,14 +1041,17 @@ function doSpin(){
   if(wheelSpinning || !state.canSpin) return;
   wheelSpinning = true;
   document.getElementById("wheel-result").textContent = "";
+  clearHighlight("wheel-svg");
   const targetIndex = Math.floor(Math.random()*MAIN_WEDGES.length);
   spinToIndex("wheel-svg", MAIN_WEDGES, targetIndex, 5, 3600);
+  Sound.scheduleWheelTicks(3600);
   updateActionButtons();
   setTurnMsg(currentPlayer().name + " is spinning...");
   setTimeout(()=>{
     wheelSpinning = false;
     const wedge = MAIN_WEDGES[targetIndex];
     document.getElementById("wheel-result").textContent = wedge.label;
+    highlightWedge("wheel-svg", targetIndex);
     handleWedgeResult(wedge);
   }, 3650);
 }
@@ -895,6 +1059,7 @@ function doSpin(){
 function handleWedgeResult(wedge){
   const p = currentPlayer();
   if(wedge.type === "bankrupt"){
+    Sound.bankrupt();
     p.roundMoney = 0;
     setTurnMsg(currentPlayer().name + " went BANKRUPT! Turn passes.");
     saveState();
@@ -902,6 +1067,7 @@ function handleWedgeResult(wedge){
     return;
   }
   if(wedge.type === "loseturn"){
+    Sound.loseTurn();
     setTurnMsg(currentPlayer().name + " lost their turn.");
     saveState();
     nextPlayer();
@@ -942,6 +1108,7 @@ function guessConsonant(letter, cashValue){
   const p = currentPlayer();
   document.getElementById("consonant-zone").style.display = "none";
   if(count > 0){
+    Sound.letterHit();
     state.revealedLetters.push(letter);
     p.roundMoney += cashValue * count;
     setTurnMsg(`${letter} appears ${count} time${count>1?'s':''}! ${p.name} spins again.`);
@@ -949,6 +1116,7 @@ function guessConsonant(letter, cashValue){
     renderBoard(); renderScoreboard();
     checkAutoSolve();
   } else {
+    Sound.letterMiss();
     setTurnMsg(`${letter} is not in the puzzle.`);
     if(state.freePlayActive){
       state.freePlayActive = false;
@@ -963,6 +1131,7 @@ function guessConsonant(letter, cashValue){
 }
 
 function nextPlayer(){
+  Sound.turnChange();
   state.freePlayActive = false;
   state.canSpin = true;
   state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
@@ -991,14 +1160,17 @@ function openVowelPicker(){
 }
 function buyVowel(letter){
   const p = currentPlayer();
+  Sound.vowelBuy();
   p.roundMoney -= VOWEL_COST;
   state.guessedLetters.push(letter);
   const count = state.puzzle.p.split("").filter(ch=>ch===letter).length;
   if(count > 0){
+    Sound.letterHit();
     state.revealedLetters.push(letter);
     setTurnMsg(`${letter} appears ${count} time${count>1?'s':''}! ${p.name} continues.`);
     checkAutoSolve();
   } else {
+    Sound.letterMiss();
     setTurnMsg(`${letter} is not in the puzzle. Turn passes.`);
     renderScoreboard();
     saveState();
@@ -1027,6 +1199,7 @@ function trySolve(){
   if(normalizeAnswer(guess) === normalizeAnswer(state.puzzle.p)){
     solvePuzzle(p);
   } else {
+    Sound.letterMiss();
     setTurnMsg(`"${guess}" is not correct. Turn passes.`);
     nextPlayer();
   }
@@ -1037,6 +1210,7 @@ function checkAutoSolve(){
   }
 }
 function solvePuzzle(p){
+  Sound.puzzleSolved();
   state.revealedLetters = state.puzzle.p.split("").filter(ch=>/[A-Z0-9]/.test(ch));
   renderBoard();
   p.totalMoney += p.roundMoney;
@@ -1155,12 +1329,16 @@ function doBonusSpin(){
   if(wheelSpinning) return;
   wheelSpinning = true;
   document.getElementById("bonus-spin-btn").disabled = true;
+  document.getElementById("bonus-wheel-result").textContent = "";
+  clearHighlight("bonus-wheel-svg");
   const targetIndex = Math.floor(Math.random()*BONUS_WEDGES.length);
   spinToIndex("bonus-wheel-svg", BONUS_WEDGES, targetIndex, 5, 3600);
+  Sound.scheduleWheelTicks(3600);
   setTimeout(()=>{
     wheelSpinning = false;
     const wedge = BONUS_WEDGES[targetIndex];
     document.getElementById("bonus-wheel-result").textContent = wedge.label;
+    highlightWedge("bonus-wheel-svg", targetIndex);
     state.bonus.prizeWedge = wedge;
     document.getElementById("bonus-spin-btn").style.display = "none";
     saveState();
@@ -1256,6 +1434,7 @@ function startBonusTimer(){
   window._bonusInterval = setInterval(()=>{
     state.bonus.timeLeft -= 1;
     updateBonusTimerDisplay();
+    Sound.timerTick(state.bonus.timeLeft <= 5);
     saveState();
     if(state.bonus.timeLeft <= 0){
       clearInterval(window._bonusInterval);
@@ -1283,6 +1462,7 @@ function finishBonusRound(won){
   const wedge = state.bonus.prizeWedge;
   let resultMsg;
   if(won){
+    Sound.win();
     if(wedge.type === "cash"){
       finalist.totalMoney += wedge.value;
       resultMsg = `🎉 ${finalist.name} solved it and won $${wedge.value.toLocaleString()}!`;
@@ -1290,6 +1470,7 @@ function finishBonusRound(won){
       resultMsg = `🎉 ${finalist.name} solved it and won ${wedge.value}!`;
     }
   } else {
+    Sound.timeUp();
     resultMsg = `Time's up! The answer was "${state.bonus.puzzle.p}". ${finalist.name} didn't win the bonus prize this time.`;
   }
   document.getElementById("bonus-play-zone").style.display = "none";
@@ -1302,6 +1483,7 @@ function finishBonusRound(won){
    GAME OVER / STATS
    ========================================================= */
 function endGame(){
+  Sound.win();
   const stats = loadStats();
   let winner = state.players[0];
   state.players.forEach(p=>{ if(p.totalMoney > winner.totalMoney) winner = p; });
