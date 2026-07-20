@@ -347,7 +347,8 @@
       <input type="password" id="in-pass" autocomplete="current-password" placeholder="Your password">
       <button class="btn lg" id="btn-login">Log in</button>
       <div class="msg" id="login-msg"></div>
-      <p class="hint center" style="margin-top:14px;">New here? Ask the person who set this up to invite you. Curious first? <a href="#" id="peek-help" style="color:var(--primary);font-weight:600;">See what the app does →</a></p>
+      <p class="hint center" style="margin-top:12px;"><a href="#" id="forgot-link" style="color:var(--primary);font-weight:600;">Forgot your password?</a></p>
+      <p class="hint center" style="margin-top:6px;">New here? Ask the person who set this up to invite you. Curious first? <a href="#" id="peek-help" style="color:var(--primary);font-weight:600;">See what the app does →</a></p>
     </div>
   </section>
 
@@ -621,6 +622,17 @@
   <div class="sheet-body doc" id="help-body"></div>
 </aside>
 
+<!-- ══ PASSWORD RESET INFO ══ -->
+<div id="reset-modal" class="hidden">
+  <div class="tour-card">
+    <div class="glyph">🔑</div>
+    <h2>Need a password reset?</h2>
+    <p>Password resets are handled from the Multiverse portal, which shares the same account as Weight: Less. Head there, choose <strong>"Forgot passcode?"</strong>, and follow the emailed link. Your new password works here too.</p>
+    <a class="btn lg" href="https://adams-multiverse.netlify.app/" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-bottom:10px;">Go to the reset portal →</a>
+    <button class="btn ghost" id="reset-modal-close" style="width:100%;">Close</button>
+  </div>
+</div>
+
 <!-- ══ WELCOME TOUR ══ -->
 <div id="tour" class="hidden"></div>
 
@@ -770,8 +782,17 @@ function openHelp() { renderHelp(); $('backdrop').classList.add('show'); $('help
 function closeHelp() { $('backdrop').classList.remove('show'); $('help-sheet').classList.remove('show'); }
 $('btn-help').onclick = openHelp;
 $('btn-help-close').onclick = closeHelp;
-$('backdrop').onclick = () => { closeHelp(); };
+$('backdrop').onclick = () => { closeHelp(); if($('reset-modal')) $('reset-modal').classList.add('hidden'); };
 $('peek-help').onclick = e => { e.preventDefault(); openHelp(); };
+$('forgot-link').onclick = e => {
+  e.preventDefault();
+  $('backdrop').classList.add('show');
+  $('reset-modal').classList.remove('hidden');
+};
+$('reset-modal-close').onclick = () => {
+  $('reset-modal').classList.add('hidden');
+  if (!$('help-sheet').classList.contains('show')) $('backdrop').classList.remove('show');
+};
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
 $('help-search').oninput = e => {
   const q = e.target.value.trim().toLowerCase();
