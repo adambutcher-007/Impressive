@@ -865,7 +865,11 @@ sb.auth.onAuthStateChange(async (_e, session) => {
 
 /* ── profile / share code ── */
 async function loadProfile() {
-  const { data, error } = await sb.from('wl_profiles').select('*').single();
+  // wl_profiles is world-readable (so share codes can be resolved), so we MUST
+  // filter to our own row — an unfiltered .single() would see every user's row.
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const { data, error } = await sb.from('wl_profiles').select('*').eq('user_id', user.id).single();
   if (error) { console.warn(error); return; }
   profile = data;
   $('share-code').textContent = data.share_code;
