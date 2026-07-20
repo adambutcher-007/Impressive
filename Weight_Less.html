@@ -583,6 +583,20 @@
       </div>
     </div>
 
+    <!-- BACKUP & RESTORE -->
+    <div class="card" id="backup-card">
+      <h2>Backup &amp; restore</h2>
+      <p class="cap">Export everything — your weight data <em>and</em> your device-only journal — as one private file you control. Import it on a new device or to restore a backup. This is also how you carry your journal between browsers.</p>
+      <div class="row" style="gap:10px;">
+        <button class="btn sm" id="btn-export">⬇︎ Export backup (JSON)</button>
+        <button class="btn sm subtle" id="btn-export-csv">⬇︎ Weights only (CSV)</button>
+        <button class="btn sm ghost" id="btn-import">⬆︎ Import backup</button>
+        <input type="file" id="import-file" accept="application/json,.json" class="hidden">
+      </div>
+      <div class="msg" id="backup-msg"></div>
+      <p class="hint" style="margin-top:8px;">🔒 Your journal words are read from this device to build the export, and written back to this device on import — they're never uploaded.</p>
+    </div>
+
     <!-- HISTORY -->
     <div class="card">
       <h2>Your entries</h2>
@@ -707,7 +721,7 @@ When friends share with you, you can send a quick **cheer** — 👏 💪 🎉 �
 
 This app supports healthy change, not extremes. You can set a **healthy floor**, and the app will gently flag targets that go too low and won't celebrate rapid or extreme weight loss. Progress here means sustainable progress.
 
-## Export & import
+## Export & import (backup and moving devices)
 
 - **Export** creates a single file with **both** your weight data and your journal (plus goals) — a complete, private backup you control.
 - **Import** loads it back — on a new device, or to restore a backup. It's how you carry your device-local journal with you.
@@ -877,7 +891,7 @@ $('btn-log').onclick = async () => {
     editingId = null; $('btn-log').textContent = 'Log it';
     toast('Entry updated');
   } else {
-    const { error } = await sb.from('wl_weight_entries').insert({ weight_lb: val, entered_at });
+    const { error } = await sb.from('wl_weight_entries').insert({ weight_lb: val, entered_at, user_id: profile.user_id });
     if (error) return setMsg('log-msg', error.message, 'err');
     toast('Nice — logged! 🎉');
     $('journal-nudge').classList.remove('hidden');   // gently invite a journal win
@@ -1195,7 +1209,7 @@ $('btn-journal-save').onclick = async () => {
 
   const id = editingJournalId || uuid();
   const meta = {
-    id, win_count: Math.min(data.wins.length, 3),
+    id, user_id: profile.user_id, win_count: Math.min(data.wins.length, 3),
     has_nsv: data.nsv, has_text: !!data.body,
   };
   // 1) text stays local
@@ -1409,7 +1423,7 @@ $('btn-goal-add').onclick = async () => {
   if (belowFloor(target)) {
     if (!confirm(`That target (${target} ${unit()}) is below your healthy floor of ${getFloor()} ${unit()}.\n\nWeight: Less is built for sustainable, healthy change. Are you sure you want to add it?`)) return;
   }
-  const { error } = await sb.from('wl_goals').insert({ label, target_lb: target, kind:'custom', enabled:true });
+  const { error } = await sb.from('wl_goals').insert({ label, target_lb: target, kind:'custom', enabled:true, user_id: profile.user_id });
   if (error) { setMsg('goal-msg', error.message, 'err'); return; }
   $('goal-label').value=''; $('goal-target').value=''; setMsg('goal-msg','');
   toast('Goal added ✨');
@@ -1434,7 +1448,7 @@ $('btn-floor-save').onclick = async () => {
   const val = parseFloat($('in-floor').value);
   if (!val || val <= 0) { toast('Enter a floor weight'); return; }
   const existing = floorGoal();
-  const row = { label:'Healthy floor', target_lb: val, kind:'floor', enabled:true };
+  const row = { label:'Healthy floor', target_lb: val, kind:'floor', enabled:true, user_id: profile.user_id };
   const { error } = existing
     ? await sb.from('wl_goals').update(row).eq('id', existing.id)
     : await sb.from('wl_goals').insert(row);
@@ -1543,7 +1557,7 @@ async function checkAwards(){
   const fresh = earned.filter(e=>!have.has(e.code));
   if(fresh.length){
     const { error } = await sb.from('wl_awards')
-      .insert(fresh.map(e=>({ code:e.code, title:e.title })));
+      .insert(fresh.map(e=>({ code:e.code, title:e.title, user_id: profile.user_id })));
     if(error){ console.warn(error); }
     else {
       await loadAwards();
@@ -2043,6 +2057,109 @@ $('sw-predict').onclick = () => {
   $('sw-predict').classList.toggle('on', showPrediction);
   renderChart();
 };
+
+/* ══════════════ PHASE 8 — EXPORT / IMPORT ══════════════ */
+function downloadFile(filename, text, type){
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+function buildBundle(){
+  const weights = entries.map(e => ({ id:e.id, weight_lb:e.weight_lb, entered_at:e.entered_at }));
+  const journals = journalMeta.map(m => {
+    const t = loadLocalJournal(m.id);
+    return {
+      id:m.id, entered_at:m.entered_at, win_count:m.win_count, has_nsv:m.has_nsv, has_text:m.has_text,
+      text: t ? { wins: t.wins||[], body: t.body||'', nsv: !!t.nsv } : null,
+    };
+  });
+  const goalsOut = goals.map(g => ({ id:g.id, label:g.label, target_lb:g.target_lb, kind:g.kind, enabled:g.enabled }));
+  return {
+    app:'weight-less', version:1, exported_at:new Date().toISOString(),
+    share_code: profile && profile.share_code,
+    weights, journals, goals: goalsOut,
+  };
+}
+
+$('btn-export').onclick = () => {
+  const bundle = buildBundle();
+  const stamp = new Date().toISOString().slice(0,10);
+  downloadFile(`weight-less-backup-${stamp}.json`, JSON.stringify(bundle, null, 2), 'application/json');
+  setMsg('backup-msg', `Exported ${bundle.weights.length} weigh-ins, ${bundle.journals.length} journal entries, ${bundle.goals.length} goals.`, 'ok');
+};
+
+$('btn-export-csv').onclick = () => {
+  const rows = [['date','weight_lb']].concat(
+    [...entries].reverse().map(e => [new Date(e.entered_at).toISOString(), e.weight_lb]));
+  const csv = rows.map(r => r.join(',')).join('\n');
+  downloadFile(`weight-less-weights-${new Date().toISOString().slice(0,10)}.csv`, csv, 'text/csv');
+  setMsg('backup-msg','Weights exported as CSV.', 'ok');
+};
+
+$('btn-import').onclick = () => $('import-file').click();
+$('import-file').onchange = async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  await importBundle(file);
+};
+
+async function importBundle(file){
+  let data;
+  try { data = JSON.parse(await file.text()); }
+  catch { setMsg('backup-msg','That file isn\'t valid JSON.', 'err'); return; }
+  if(!data || data.app !== 'weight-less'){
+    if(!confirm('This doesn\'t look like a Weight: Less backup. Import anyway?')) return;
+  }
+  if(!profile){ toast('Please wait for the app to finish loading'); return; }
+  const me = profile.user_id;
+  let wCount=0, jCount=0, gCount=0;
+
+  // weights — upsert by id (safe re-import; no duplicates)
+  if(Array.isArray(data.weights) && data.weights.length){
+    const rows = data.weights.filter(w => w && w.weight_lb).map(w => ({
+      id: w.id || uuid(), user_id: me,
+      weight_lb: w.weight_lb, entered_at: w.entered_at || new Date().toISOString(),
+    }));
+    const { error } = await sb.from('wl_weight_entries').upsert(rows, { onConflict:'id' });
+    if(error) console.warn(error); else wCount = rows.length;
+  }
+
+  // journals — text back to THIS device, metadata upserted by id
+  if(Array.isArray(data.journals) && data.journals.length){
+    const metaRows = [];
+    for(const j of data.journals){
+      if(!j) continue;
+      const id = j.id || uuid();
+      if(j.text) saveLocalJournal(id, { wins:j.text.wins||[], body:j.text.body||'', nsv:!!j.text.nsv, entered_at:j.entered_at });
+      metaRows.push({
+        id, user_id: me, entered_at: j.entered_at || new Date().toISOString(),
+        win_count: j.win_count||0, has_nsv: !!j.has_nsv, has_text: !!j.has_text,
+      });
+    }
+    if(metaRows.length){
+      const { error } = await sb.from('wl_journal_meta').upsert(metaRows, { onConflict:'id' });
+      if(error) console.warn(error); else jCount = metaRows.length;
+    }
+  }
+
+  // goals — upsert by id
+  if(Array.isArray(data.goals) && data.goals.length){
+    const rows = data.goals.filter(g => g && g.label && g.target_lb).map(g => ({
+      id: g.id || uuid(), user_id: me,
+      label: g.label, target_lb: g.target_lb, kind: g.kind || 'custom', enabled: g.enabled !== false,
+    }));
+    const { error } = await sb.from('wl_goals').upsert(rows, { onConflict:'id' });
+    if(error) console.warn(error); else gCount = rows.length;
+  }
+
+  setMsg('backup-msg', `Imported ${wCount} weigh-ins, ${jCount} journal entries, ${gCount} goals. 🎉`, 'ok');
+  toast('Backup imported');
+  await loadProfile();     // reloads journal, goals, awards, shares, cheers
+  await loadEntries();     // reloads entries + chart + motivation
+}
 
 /* deep-link help to a section by heading keyword */
 function openHelpAt(keyword) {
