@@ -1,0 +1,2092 @@
+<!DOCTYPE html>
+<!--
+  WEIGHT: LESS — Phase 1 (shell, auth, weight logging, embedded help)
+
+  SETUP:
+  1. Run Weight_Less_Phase0_Backend.sql in your Supabase SQL Editor first.
+  2. Fill in SUPABASE_URL and SUPABASE_ANON_KEY below (same project as the Deck).
+  3. Deploy this single file to Netlify / GitHub Pages, or open locally.
+
+  Phase 1 scope: log in, log/back-date/edit/delete your own weight, see & copy
+  your share code, first-run welcome tour, and the in-app help guide.
+  Graph, journal, goals, awards, sharing, prediction, export come in later phases.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weight: Less</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg:#FFF9F5; --surface:#FFFFFF; --text:#2B2138; --muted:#8A8296;
+    --primary:#F5576C; --accent:#F09819;
+    --grad: linear-gradient(120deg, #F5576C 0%, #F09819 100%);
+    --grad-soft: linear-gradient(120deg, #FFE9EC 0%, #FFF2E0 100%);
+    --glow: 0 12px 30px -8px rgba(245,87,108,.45);
+    --glow-accent: 0 12px 30px -8px rgba(240,152,25,.4);
+    --radius:16px; --radius-sm:12px;
+    --shadow: 0 8px 24px -10px rgba(43,33,56,.18);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:'Poppins',system-ui,sans-serif; color:var(--text);
+    background:var(--bg); position:relative; overflow-x:hidden; min-height:100vh;
+  }
+  /* floating blurred blobs */
+  .blob { position:fixed; border-radius:50%; filter:blur(70px); opacity:.5; z-index:0; pointer-events:none; }
+  .blob.b1 { width:380px; height:380px; background:#F5576C; top:-120px; right:-100px; }
+  .blob.b2 { width:320px; height:320px; background:#F09819; bottom:-120px; left:-100px; opacity:.4; }
+  .blob.b3 { width:240px; height:240px; background:#FFC1CC; top:40%; left:55%; opacity:.35; }
+  .wrap { position:relative; z-index:1; max-width:720px; margin:0 auto; padding:20px 18px 60px; }
+
+  h1,h2,h3 { font-weight:700; letter-spacing:-.02em; line-height:1.15; }
+  .muted { color:var(--muted); }
+  .center { text-align:center; }
+
+  /* buttons */
+  button { font-family:inherit; cursor:pointer; border:none; font-weight:600; }
+  .btn {
+    background:var(--grad); color:#fff; border-radius:999px; padding:14px 26px;
+    font-size:16px; box-shadow:var(--glow); transition:transform .12s, box-shadow .12s;
+  }
+  .btn:hover { transform:translateY(-1px); box-shadow:0 16px 34px -8px rgba(245,87,108,.55); }
+  .btn:active { transform:translateY(0); }
+  .btn:disabled { opacity:.55; cursor:default; transform:none; box-shadow:none; }
+  .btn.lg { padding:16px 34px; font-size:18px; width:100%; }
+  .btn.ghost { background:#fff; color:var(--primary); border:2px solid #FCD7DD; box-shadow:none; }
+  .btn.sm { padding:8px 16px; font-size:13px; }
+  .btn.subtle { background:var(--grad-soft); color:var(--primary); box-shadow:none; }
+
+  /* cards */
+  .card {
+    background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:22px; margin-bottom:16px;
+  }
+  .card h2 { font-size:19px; margin-bottom:2px; }
+  .cap { font-size:13px; color:var(--muted); margin-bottom:14px; }
+
+  /* inputs */
+  label { font-size:13px; font-weight:600; color:var(--text); display:block; margin-bottom:6px; }
+  input[type=text], input[type=email], input[type=password], input[type=number],
+  input[type=datetime-local] {
+    width:100%; font-family:inherit; font-size:16px; color:var(--text);
+    background:#FFF; border:2px solid #EFE6EE; border-radius:var(--radius-sm);
+    padding:13px 14px; outline:none; transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(245,87,108,.12); }
+  ::placeholder { color:#B8B0C2; }
+
+  /* header bar */
+  .topbar { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+  .brand { font-size:22px; font-weight:800; letter-spacing:-.03em;
+    background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .brand .less { font-style:italic; }
+  .spacer { flex:1; }
+  .icon-btn {
+    width:40px; height:40px; border-radius:999px; background:#fff; color:var(--primary);
+    font-size:18px; font-weight:700; box-shadow:var(--shadow); display:grid; place-items:center;
+  }
+  .icon-btn:hover { background:var(--grad-soft); }
+
+  /* hero (login) */
+  .hero { text-align:center; padding:36px 20px 8px; }
+  .hero h1 { font-size:40px; margin-bottom:10px; }
+  .hero .tag { font-size:17px; color:var(--muted); max-width:440px; margin:0 auto 26px; }
+  .hero .glyph {
+    width:74px; height:74px; border-radius:22px; background:var(--grad);
+    box-shadow:var(--glow); display:grid; place-items:center; margin:0 auto 18px;
+    font-size:38px; color:#fff;
+  }
+  #login-card { max-width:400px; margin:0 auto; }
+  #login-card input { margin-bottom:14px; }
+  .msg { font-size:14px; margin-top:12px; min-height:20px; }
+  .msg.err { color:var(--primary); }
+  .msg.ok { color:#1a9e6a; }
+
+  /* share code chip */
+  .code-chip { display:inline-flex; align-items:center; gap:10px; background:var(--grad-soft);
+    border-radius:999px; padding:8px 8px 8px 16px; }
+  .code-chip .code { font-weight:700; letter-spacing:.06em; color:var(--primary); font-size:16px; }
+
+  /* entries list */
+  .entry { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid #F1E9F0; }
+  .entry:first-child { border-top:none; }
+  .entry .w { font-size:20px; font-weight:700; min-width:96px; }
+  .entry .w small { font-size:13px; font-weight:600; color:var(--muted); }
+  .entry .when { flex:1; font-size:13px; color:var(--muted); }
+  .entry .acts { display:flex; gap:6px; }
+  .entry .acts button { background:none; color:var(--muted); font-size:13px; padding:6px 10px; border-radius:8px; }
+  .entry .acts button:hover { background:#FBEEF0; color:var(--primary); }
+  .empty { text-align:center; padding:26px 10px; color:var(--muted); }
+  .empty .big { font-size:34px; margin-bottom:8px; }
+
+  .log-row { display:flex; gap:10px; align-items:flex-end; }
+  .log-row .grow { flex:1; }
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+  details.more { margin-top:10px; }
+  details.more summary { font-size:13px; color:var(--primary); cursor:pointer; font-weight:600; }
+  details.more .body { margin-top:12px; }
+
+  /* modal / slide-over (help + tour) */
+  .backdrop { position:fixed; inset:0; background:rgba(43,33,56,.45); backdrop-filter:blur(2px);
+    z-index:50; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .backdrop.show { opacity:1; pointer-events:auto; }
+  .sheet {
+    position:fixed; top:0; right:0; height:100%; width:min(560px,100%); background:var(--bg);
+    z-index:60; box-shadow:-20px 0 50px -20px rgba(43,33,56,.4); transform:translateX(100%);
+    transition:transform .28s cubic-bezier(.4,0,.2,1); display:flex; flex-direction:column;
+  }
+  .sheet.show { transform:translateX(0); }
+  .sheet .sheet-head { background:var(--grad); color:#fff; padding:18px 20px; display:flex; align-items:center; gap:12px; }
+  .sheet .sheet-head h2 { font-size:20px; }
+  .sheet .sheet-head .x { margin-left:auto; background:rgba(255,255,255,.25); color:#fff; width:34px; height:34px;
+    border-radius:999px; font-size:18px; }
+  .sheet .sheet-head .x:hover { background:rgba(255,255,255,.4); }
+  .sheet .toolbar { padding:12px 20px 0; }
+  .sheet .toolbar input { font-size:14px; padding:10px 12px; }
+  .sheet-body { padding:16px 22px 40px; overflow-y:auto; }
+
+  /* rendered markdown */
+  .doc h1 { font-size:24px; margin:6px 0 12px; }
+  .doc h2 { font-size:19px; margin:22px 0 8px; padding-top:10px; border-top:1px solid #F1E9F0; }
+  .doc h2:first-of-type { border-top:none; }
+  .doc h3 { font-size:16px; margin:16px 0 6px; }
+  .doc p { font-size:15px; line-height:1.6; margin:8px 0; color:#443a52; }
+  .doc ul, .doc ol { margin:8px 0 8px 20px; }
+  .doc li { font-size:15px; line-height:1.55; margin:5px 0; color:#443a52; }
+  .doc strong { color:var(--text); }
+  .doc code { background:#FBEEF0; color:var(--primary); padding:1px 6px; border-radius:6px; font-size:13px; }
+  .doc hr { display:none; }
+  .doc blockquote { background:var(--grad-soft); border-left:4px solid var(--primary); border-radius:8px;
+    padding:10px 14px; margin:12px 0; }
+  .doc blockquote p { margin:0; }
+
+  /* welcome tour */
+  .tour-card { position:fixed; z-index:61; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:min(420px,92%); background:var(--surface); border-radius:var(--radius); box-shadow:var(--glow);
+    padding:26px; text-align:center; }
+  .tour-card .glyph { font-size:44px; margin-bottom:10px; }
+  .tour-card h2 { font-size:22px; margin-bottom:8px; }
+  .tour-card p { color:var(--muted); font-size:15px; line-height:1.55; margin-bottom:20px; }
+  .tour-dots { display:flex; gap:6px; justify-content:center; margin-bottom:18px; }
+  .tour-dots i { width:8px; height:8px; border-radius:999px; background:#EBD9DE; display:block; }
+  .tour-dots i.on { background:var(--primary); width:22px; }
+  .tour-nav { display:flex; gap:10px; }
+  .tour-nav .btn { flex:1; }
+
+  /* graph */
+  .graph-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .graph-head h2 { font-size:19px; }
+  .seg { display:inline-flex; background:var(--grad-soft); border-radius:999px; padding:3px; }
+  .seg button { background:none; color:var(--primary); font-size:13px; padding:7px 14px; border-radius:999px; font-weight:600; }
+  .seg button.on { background:var(--grad); color:#fff; box-shadow:var(--glow); }
+  .windows { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .windows button { background:#fff; color:var(--muted); border:2px solid #EFE6EE; border-radius:999px;
+    font-size:12px; padding:6px 12px; font-weight:600; }
+  .windows button.on { background:var(--grad-soft); color:var(--primary); border-color:transparent; }
+  .chart-wrap { position:relative; height:280px; }
+  .custom-range { display:flex; gap:8px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap; }
+  .custom-range > div { flex:1; min-width:130px; }
+  .custom-range input { font-size:14px; padding:9px 10px; }
+  .stat-strip { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .stat { flex:1; min-width:90px; background:var(--grad-soft); border-radius:var(--radius-sm); padding:12px 14px; }
+  .stat .n { font-size:20px; font-weight:700; }
+  .stat .l { font-size:12px; color:var(--muted); font-weight:600; }
+  .stat .n.up { color:var(--accent); } .stat .n.down { color:#1a9e6a; }
+
+  /* sharing */
+  .tier-picks { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+  .tier { display:inline-flex; align-items:center; gap:7px; background:#fff; border:2px solid #EFE6EE;
+    border-radius:999px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer; color:var(--muted); user-select:none; }
+  .tier.on { background:var(--grad-soft); border-color:transparent; color:var(--primary); }
+  .tier .dot { width:9px; height:9px; border-radius:999px; background:#D9CEDA; }
+  .tier.on .dot { background:var(--primary); }
+  .share-add { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+  .share-add > div { flex:1; min-width:160px; }
+  .friend-row { padding:14px 0; border-top:1px solid #F1E9F0; }
+  .friend-row:first-child { border-top:none; }
+  .friend-row .fr-top { display:flex; align-items:center; gap:10px; }
+  .friend-row .avatar { width:34px; height:34px; border-radius:999px; background:var(--grad); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:15px; flex-shrink:0; }
+  .friend-row .fname { flex:1; font-weight:600; font-size:15px; }
+  .friend-row .fname small { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+  .chip-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { background:var(--grad-soft); color:var(--primary); font-size:11px; font-weight:700;
+    padding:3px 10px; border-radius:999px; cursor:pointer; }
+  .chip.off { background:#F3EEF3; color:#B3A9BE; }
+  .chip.ro { cursor:default; }
+  .fr-acts { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .cheer-btns { display:flex; gap:4px; }
+  .cheer-btns button { background:#fff; border:2px solid #EFE6EE; border-radius:999px; font-size:16px;
+    width:36px; height:36px; padding:0; }
+  .cheer-btns button:hover { border-color:var(--primary); transform:translateY(-1px); }
+  .overlay-toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; cursor:pointer; }
+  .revoke { background:none; color:var(--muted); font-size:12px; padding:6px 10px; border-radius:8px; }
+  .revoke:hover { background:#FBEEF0; color:var(--primary); }
+  .cheer-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid #F1E9F0; }
+  .cheer-item:first-child { border-top:none; }
+  .cheer-item .ce { font-size:26px; }
+  .cheer-item .cbody { flex:1; }
+  .cheer-item .cbody .cfrom { font-weight:600; font-size:14px; }
+  .cheer-item .cbody .cmsg { font-size:13px; color:#5c5168; }
+  .cheer-item .cwhen { font-size:11px; color:var(--muted); }
+
+  /* reminder banner */
+  .reminder-banner { display:flex; align-items:center; gap:12px; background:var(--surface);
+    border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 18px; margin-bottom:16px;
+    border-left:5px solid var(--accent); }
+  .reminder-banner p { font-size:14px; font-weight:600; flex:1; }
+  .reminder-banner .x { background:none; color:var(--muted); font-size:18px; width:30px; height:30px; border-radius:999px; }
+  .reminder-banner .x:hover { background:#F5EEF2; }
+
+  /* recap */
+  #recap-card { background:linear-gradient(120deg,#fff 0%,#FFF4EC 100%); }
+  .recap-grid { display:flex; flex-wrap:wrap; gap:12px; margin-top:6px; }
+  .recap-item { flex:1; min-width:130px; background:#fff; border-radius:var(--radius-sm); padding:14px 16px; box-shadow:0 4px 14px -8px rgba(43,33,56,.15); }
+  .recap-item .rl { font-size:12px; color:var(--muted); font-weight:600; margin-bottom:4px; }
+  .recap-item .rv { font-size:18px; font-weight:700; }
+  .recap-item .rv.down { color:#1a9e6a; } .recap-item .rv.up { color:var(--accent); }
+  .recap-item .rv small { font-size:13px; color:var(--muted); font-weight:600; }
+
+  /* awards / trophy shelf */
+  .award-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }
+  .award { background:var(--grad-soft); border-radius:var(--radius-sm); padding:14px; text-align:center; }
+  .award .ai { font-size:30px; margin-bottom:6px; }
+  .award .at { font-size:13px; font-weight:600; line-height:1.3; }
+  .award .ad { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  /* goals */
+  .goal-add { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:8px; }
+  .goal-add .lbl { flex:2; min-width:150px; }
+  .goal-add .tgt { flex:1; min-width:100px; }
+  .goal-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid #F1E9F0; }
+  .goal-row:first-child { border-top:none; }
+  .goal-row .swatch { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+  .goal-row .gname { flex:1; font-size:15px; font-weight:600; }
+  .goal-row .gname small { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+  .goal-row .gtarget { font-weight:700; font-size:15px; }
+  .goal-row .gdel { background:none; color:var(--muted); font-size:13px; padding:6px 8px; border-radius:8px; }
+  .goal-row .gdel:hover { background:#FBEEF0; color:var(--primary); }
+  /* switch */
+  .switch { width:44px; height:26px; border-radius:999px; background:#E7DCE6; position:relative;
+    cursor:pointer; transition:background .15s; flex-shrink:0; }
+  .switch.on { background:var(--grad); }
+  .switch i { position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:999px; background:#fff;
+    transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .switch.on i { left:21px; }
+  .floor-box { background:var(--grad-soft); border-radius:var(--radius-sm); padding:14px; margin-bottom:16px; }
+  .floor-box .frow { display:flex; gap:8px; align-items:flex-end; }
+  .floor-box .frow > div { flex:1; }
+  .subhead { font-size:15px; font-weight:700; margin:6px 0 4px; }
+
+  /* journal */
+  .privacy-note { display:flex; gap:10px; align-items:flex-start; background:var(--grad-soft);
+    border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:14px; }
+  .privacy-note .lock { font-size:18px; }
+  .privacy-note p { font-size:13px; line-height:1.5; color:#5c5168; }
+  .privacy-note a { color:var(--primary); font-weight:600; text-decoration:none; }
+  .wins { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .win-row { display:flex; align-items:center; gap:8px; }
+  .win-row .idx { width:24px; height:24px; border-radius:999px; background:var(--grad); color:#fff;
+    font-size:12px; font-weight:700; display:grid; place-items:center; flex-shrink:0; }
+  .win-row input { flex:1; }
+  .nsv-toggle { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:14px;
+    font-weight:600; color:var(--text); user-select:none; margin-bottom:6px; }
+  .nsv-toggle .box { width:22px; height:22px; border-radius:7px; border:2px solid #EFE6EE; display:grid; place-items:center;
+    font-size:14px; color:#fff; transition:all .15s; }
+  .nsv-toggle.on .box { background:var(--grad); border-color:transparent; }
+  .nsv-toggle .hint2 { font-weight:400; color:var(--muted); font-size:12px; }
+  #journal-body { width:100%; font-family:inherit; font-size:15px; min-height:70px; resize:vertical;
+    border:2px solid #EFE6EE; border-radius:var(--radius-sm); padding:12px 14px; outline:none; }
+  #journal-body:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(245,87,108,.12); }
+  .nudge { background:var(--grad); color:#fff; border-radius:var(--radius-sm); padding:12px 16px;
+    font-size:14px; font-weight:600; margin-bottom:14px; box-shadow:var(--glow); }
+  .jentry { padding:14px 0; border-top:1px solid #F1E9F0; }
+  .jentry:first-child { border-top:none; }
+  .jentry .jdate { font-size:13px; color:var(--muted); font-weight:600; margin-bottom:6px; display:flex; gap:8px; align-items:center; }
+  .jentry .badge { background:var(--grad-soft); color:var(--primary); font-size:11px; font-weight:700;
+    padding:2px 8px; border-radius:999px; }
+  .jentry .jwins { margin:4px 0 4px 2px; }
+  .jentry .jwins li { list-style:none; font-size:14px; padding:3px 0 3px 22px; position:relative; }
+  .jentry .jwins li:before { content:'✓'; position:absolute; left:0; color:#1a9e6a; font-weight:700; }
+  .jentry .jbody { font-size:14px; color:#443a52; line-height:1.55; margin-top:4px; }
+  .jentry .elsewhere { font-size:13px; color:var(--muted); font-style:italic; }
+  .jentry .jacts button { background:none; color:var(--muted); font-size:12px; padding:4px 8px; border-radius:8px; }
+  .jentry .jacts button:hover { background:#FBEEF0; color:var(--primary); }
+
+  .hidden { display:none !important; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--text); color:#fff; padding:12px 20px; border-radius:999px; font-size:14px; font-weight:600;
+    z-index:80; opacity:0; transition:all .25s; box-shadow:var(--shadow); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+<div class="wrap">
+
+  <!-- ══ LOGIN ══ -->
+  <section id="view-login">
+    <div class="hero">
+      <div class="glyph">⚖️</div>
+      <h1>Weight: <span class="brand less">Less</span></h1>
+      <p class="tag">A kind, private companion for tracking your weight — and celebrating the small things you do to feel your best.</p>
+    </div>
+    <div class="card" id="login-card">
+      <label>Email</label>
+      <input type="email" id="in-email" autocomplete="username" placeholder="you@example.com">
+      <label>Passcode</label>
+      <input type="password" id="in-pass" autocomplete="current-password" placeholder="Your password">
+      <button class="btn lg" id="btn-login">Log in</button>
+      <div class="msg" id="login-msg"></div>
+      <p class="hint center" style="margin-top:14px;">New here? Ask the person who set this up to invite you. Curious first? <a href="#" id="peek-help" style="color:var(--primary);font-weight:600;">See what the app does →</a></p>
+    </div>
+  </section>
+
+  <!-- ══ APP ══ -->
+  <section id="view-app" class="hidden">
+    <div class="topbar">
+      <div class="brand">Weight: <span class="less">Less</span></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="btn-help" title="Help & guide">?</button>
+      <button class="btn sm ghost" id="btn-logout">Log out</button>
+    </div>
+
+    <!-- REMINDER BANNER -->
+    <div class="reminder-banner hidden" id="reminder-banner">
+      <span style="font-size:22px;" id="reminder-icon">☀️</span>
+      <p id="reminder-text"></p>
+      <button class="x" id="reminder-dismiss" title="Dismiss">✕</button>
+    </div>
+
+    <!-- LOG -->
+    <div class="card">
+      <h2>Log today's weight</h2>
+      <p class="cap">Pop your number in below. Once a day is perfect — but log whenever you like.</p>
+      <div class="log-row">
+        <div class="grow">
+          <label>Weight (<span class="unit-lbl">lb</span>)</label>
+          <input type="number" id="in-weight" step="0.1" min="1" placeholder="e.g. 187.4" inputmode="decimal">
+        </div>
+        <button class="btn" id="btn-log">Log it</button>
+      </div>
+      <details class="more">
+        <summary>Logging for another day? (back-date)</summary>
+        <div class="body">
+          <label>Date &amp; time</label>
+          <input type="datetime-local" id="in-when">
+          <p class="hint">Leave this and it uses right now. Handy if you forgot to log yesterday.</p>
+        </div>
+      </details>
+      <div class="msg" id="log-msg"></div>
+    </div>
+
+    <!-- GRAPH -->
+    <div class="card" id="graph-card">
+      <div class="graph-head">
+        <h2>Your journey</h2>
+        <div class="spacer"></div>
+        <div class="seg" id="mode-seg">
+          <button data-mode="trend" title="A smoothed line that ignores daily ups and downs">Trend</button>
+          <button data-mode="raw" title="Every single reading as a dot">Raw dots</button>
+        </div>
+      </div>
+      <p class="cap" id="graph-cap">Your weight over time. The smoothed trend line shows the real direction you're heading — daily wobble is normal.</p>
+      <div class="windows" id="windows">
+        <button data-win="7">7 days</button>
+        <button data-win="tmonth">This month</button>
+        <button data-win="lmonth">Last month</button>
+        <button data-win="182">6 months</button>
+        <button data-win="tyear">This year</button>
+        <button data-win="custom">Custom</button>
+      </div>
+      <div class="custom-range hidden" id="custom-range">
+        <div><label>From</label><input type="date" id="range-from"></div>
+        <div><label>To</label><input type="date" id="range-to"></div>
+        <button class="btn sm" id="range-apply">Apply</button>
+      </div>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      <div id="graph-empty" class="empty hidden">
+        <div class="big">📉</div>
+        <p><strong>Not enough to graph yet.</strong><br>Log a couple of weights and your journey appears here.</p>
+      </div>
+      <div class="stat-strip" id="stat-strip"></div>
+    </div>
+
+    <!-- GHOST OF WEIGHT FUTURE -->
+    <div class="card" id="ghost-card">
+      <div class="graph-head">
+        <h2>Ghost of Weight Future 👻</h2>
+        <div class="spacer"></div>
+        <label class="overlay-toggle"><span class="switch" id="sw-predict"><i></i></span> Show on graph</label>
+      </div>
+      <p class="cap">Where your recent pace is heading — a glimpse you can change, starting with your next small choice.</p>
+      <div id="ghost-summary"></div>
+    </div>
+
+    <!-- WEEKLY RECAP -->
+    <div class="card" id="recap-card">
+      <h2>This week 🌟</h2>
+      <p class="cap">A quick, encouraging snapshot of your last 7 days.</p>
+      <div class="recap-grid" id="recap-grid"></div>
+      <p class="hint" id="recap-win" style="margin-top:12px;"></p>
+    </div>
+
+    <!-- GOALS -->
+    <div class="card" id="goals-card">
+      <h2>Goals &amp; milestones</h2>
+      <p class="cap">Set targets that matter to you. Enabled goals appear as dotted lines on your graph, so you can see how close you're getting.</p>
+
+      <div class="floor-box">
+        <div class="subhead">🛟 Your healthy floor <span class="muted" style="font-weight:400;font-size:12px;">(optional, but recommended)</span></div>
+        <p class="hint" style="margin:0 0 10px;">A weight you don't want to go below. We'll gently flag any target beneath it and never nudge you past it. This stays on your device.</p>
+        <div class="frow">
+          <div>
+            <label>Floor (<span class="unit-lbl">lb</span>)</label>
+            <input type="number" id="in-floor" step="0.1" placeholder="e.g. 160">
+          </div>
+          <button class="btn sm" id="btn-floor-save">Set floor</button>
+          <button class="btn sm ghost hidden" id="btn-floor-clear">Clear</button>
+        </div>
+      </div>
+
+      <div class="subhead">Add a goal</div>
+      <div class="goal-add">
+        <div class="lbl"><label>What's it for?</label><input type="text" id="goal-label" placeholder="e.g. Feel great at the reunion"></div>
+        <div class="tgt"><label>Target (<span class="unit-lbl">lb</span>)</label><input type="number" id="goal-target" step="0.1" placeholder="180"></div>
+        <button class="btn sm" id="btn-goal-add">Add</button>
+      </div>
+      <div class="msg" id="goal-msg"></div>
+
+      <div class="subhead" style="margin-top:16px;">Your goals</div>
+      <div id="goals-list"></div>
+
+      <div class="subhead" style="margin-top:16px;">Milestones <span class="muted" style="font-weight:400;font-size:12px;">(the next quarter-hundred marks)</span></div>
+      <div id="milestones-list"></div>
+    </div>
+
+    <!-- TROPHY SHELF -->
+    <div class="card" id="awards-card">
+      <h2>Your trophy shelf 🏆</h2>
+      <p class="cap">Little celebrations for the habits you're building. They keep coming as you go.</p>
+      <div id="awards-list"></div>
+    </div>
+
+    <!-- JOURNAL -->
+    <div class="card" id="journal-card">
+      <h2>Today's wins</h2>
+      <p class="cap">What are 1–3 things you did today you're proud of? Small stuff counts — took the stairs, went for a walk, cooked at home.</p>
+
+      <div class="nudge hidden" id="journal-nudge">Weight logged 🎉 Add a win below — habits are what move the needle.</div>
+
+      <div class="privacy-note">
+        <span class="lock">🔒</span>
+        <p>Your journal words stay <strong>on this device only</strong> — never uploaded. We just store the dates and counts so streaks and reminders work, never the text. <a href="#" id="journal-privacy-link">How this works →</a></p>
+      </div>
+
+      <div class="wins" id="wins">
+        <div class="win-row"><span class="idx">1</span><input type="text" class="win" placeholder="Something you're proud of…"></div>
+        <div class="win-row"><span class="idx">2</span><input type="text" class="win" placeholder="(optional)"></div>
+        <div class="win-row"><span class="idx">3</span><input type="text" class="win" placeholder="(optional)"></div>
+      </div>
+
+      <div class="nsv-toggle" id="nsv-toggle">
+        <span class="box" id="nsv-box"></span>
+        <span>This includes a non-scale victory <span class="hint2">(more energy, clothes fit better, slept well)</span></span>
+      </div>
+
+      <label style="margin-top:8px;">Reflection <span class="muted" style="font-weight:400;">(optional)</span></label>
+      <textarea id="journal-body" placeholder="Anything on your mind about today…"></textarea>
+
+      <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+        <button class="btn" id="btn-journal-save">Save entry</button>
+        <button class="btn sm ghost hidden" id="btn-journal-cancel">Cancel edit</button>
+        <div class="msg" id="journal-msg" style="margin:0;"></div>
+      </div>
+    </div>
+
+    <!-- JOURNAL HISTORY -->
+    <div class="card">
+      <h2>Your journal</h2>
+      <p class="cap">Your reflections over time, newest first — read only by you, on this device.</p>
+      <div id="journal-list"></div>
+    </div>
+
+    <!-- SHARE CODE -->
+    <div class="card">
+      <h2>Your share code</h2>
+      <p class="cap">Give this to friends or family so they can connect with you. You'll always choose exactly what each person can see (coming soon).</p>
+      <div class="code-chip">
+        <span class="code" id="share-code">WL-••••••</span>
+        <button class="btn sm subtle" id="btn-copy">Copy</button>
+      </div>
+    </div>
+
+    <!-- SHARING -->
+    <div class="card" id="sharing-card">
+      <h2>Sharing</h2>
+      <p class="cap">Connect with friends and family using share codes. You choose exactly what each person sees, and can change it anytime.</p>
+
+      <label>Your display name <span class="muted" style="font-weight:400;">(so friends recognise you)</span></label>
+      <div class="share-add" style="margin-bottom:16px;">
+        <div><input type="text" id="in-name" placeholder="e.g. Adam"></div>
+        <button class="btn sm" id="btn-name-save">Save name</button>
+      </div>
+
+      <div class="subhead">Share with someone</div>
+      <p class="hint" style="margin:0 0 8px;">Enter their share code and pick what they can see.</p>
+      <div class="share-add">
+        <div><label>Their share code</label><input type="text" id="in-share-code" placeholder="WL-XXXXXX" style="text-transform:uppercase;"></div>
+      </div>
+      <div class="tier-picks" id="tier-picks">
+        <span class="tier" data-tier="relative"><span class="dot"></span>Relative gains/losses</span>
+        <span class="tier" data-tier="full"><span class="dot"></span>Full weight data</span>
+        <span class="tier" data-tier="weekly"><span class="dot"></span>Weekly weight data</span>
+        <span class="tier" data-tier="awards"><span class="dot"></span>Awards</span>
+      </div>
+      <button class="btn sm" id="btn-share-add">Share</button>
+      <div class="msg" id="share-msg"></div>
+
+      <div class="subhead" style="margin-top:18px;">People I share with</div>
+      <div id="shares-mine"></div>
+
+      <div class="subhead" style="margin-top:18px;">People sharing with me</div>
+      <div id="shares-incoming"></div>
+    </div>
+
+    <!-- CHEERS INBOX -->
+    <div class="card" id="cheers-card">
+      <h2>Cheers 👏</h2>
+      <p class="cap">Encouragement sent your way by people you're connected with.</p>
+      <div id="cheers-list"></div>
+    </div>
+
+    <!-- REMINDERS -->
+    <div class="card">
+      <h2>Reminders</h2>
+      <p class="cap">Gentle, low-pressure nudges — never nagging. Turn either off anytime.</p>
+      <div class="goal-row" style="border:none;padding:8px 0;">
+        <div class="gname">Weigh-in reminder<small>A friendly prompt on days you haven't logged.</small></div>
+        <div class="switch" id="sw-weigh"><i></i></div>
+      </div>
+      <div class="goal-row" style="border-top:1px solid #F1E9F0;padding:8px 0;">
+        <div class="gname">Journal reminder<small>A nudge to jot a win if it's been a few days.</small></div>
+        <div class="switch" id="sw-journal"><i></i></div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="card">
+      <h2>Your entries</h2>
+      <p class="cap">Everything you've logged, newest first. Tap edit to fix a typo or remove an entry.</p>
+      <div id="entries"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ══ HELP SLIDE-OVER ══ -->
+<div class="backdrop" id="backdrop"></div>
+<aside class="sheet" id="help-sheet" aria-label="Help and guide">
+  <div class="sheet-head">
+    <span style="font-size:22px;">📖</span>
+    <h2>Guide</h2>
+    <button class="x" id="btn-help-close">✕</button>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="help-search" placeholder="Search the guide…">
+  </div>
+  <div class="sheet-body doc" id="help-body"></div>
+</aside>
+
+<!-- ══ WELCOME TOUR ══ -->
+<div id="tour" class="hidden"></div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ══ EMBEDDED HELP GUIDE (source of truth: Weight_Less_Help.md) ══ -->
+<script type="text/markdown" id="help-doc">
+# Weight: Less — Help & Guide
+
+Welcome! This guide explains what Weight: Less is for and walks through every feature, so you can get the most out of it. You shouldn't *need* this to use the app — everything is labeled and guided on-screen — but it's here whenever you want the full picture.
+
+## What this app is for
+
+Weight: Less is a friendly, private companion for tracking your weight over time and, more importantly, for noticing the small everyday actions that move you toward your goals. It's built on a simple idea: **progress comes from habits, not just numbers.** So alongside your weight graph, the app helps you celebrate the things you're proud of — taking the stairs, going for a walk, cooking at home — and shows you where your current path is heading, so you can steer it.
+
+The tone here is deliberately supportive. You'll never be scolded for a number going up or for missing a day. Weight naturally bounces around; what matters is the direction over time and the habits behind it.
+
+## Getting started
+
+1. **Log in** with the email and passcode you were given.
+2. **Log your first weight** on the Today screen — type the number and tap "Log it."
+3. That's it. Your graph appears as soon as you have entries, and the rest of the app unlocks from there.
+
+A short welcome tour runs the first time you open the app, and the **"?" button** (top corner) brings you back to this guide anytime.
+
+## Logging your weight
+
+On the **Today** screen you can:
+
+- **Log a weight** as often as you like — once a day is plenty, but more is fine.
+- **Back-date an entry** if you forgot to log yesterday: just open "Logging for another day" and pick the date.
+- **Edit or delete** any entry you made, in case of a typo.
+
+Each entry records the moment you logged it, which is what powers your graph and trends.
+
+## Your graph
+
+The graph plots **time along the bottom** and **weight up the side**, so you can see your journey at a glance.
+
+- **Smoothed trend vs. raw dots.** By default you see a *smoothed trend line*, which filters out day-to-day noise (water weight, meals, time of day) so you can see the real direction you're heading. You can flip to *raw dots* anytime. Your choice is remembered.
+- **Time windows.** Focus on the *last 7 days*, *this month*, *last month*, *6 months*, *this year*, or a *custom date range*.
+- **Goal lines.** Your goals show up as dotted lines across the graph so you can see how close you are.
+- **Friends' lines.** If friends have shared their data with you, you can overlay their progress in their own color.
+
+## The "Ghost of Weight Future" — your prediction
+
+Inspired by *A Christmas Carol*, the app can show you where your current pace is taking you. It draws a **dashed projection** forward from your recent trend, with a soft band showing the range of likely outcomes, and it estimates **when you'd reach each of your goals** at this rate.
+
+It's meant to be motivating, not alarming — a glimpse of a future you can change, starting with your next small choice. It only appears once you have enough entries to make a fair estimate, and it never predicts unhealthy extremes.
+
+## Goals & milestones
+
+- **Set your own goals** — a target weight with a label that means something to you.
+- **Automatic milestones.** The app also offers quarter-hundred milestones (getting below 250, 225, 200, 175 lb, and so on).
+- **Turn any goal on or off** whenever you like — enabled goals appear as dotted lines on your graph.
+
+Goals are private to you.
+
+## Awards
+
+You'll earn awards for the things worth celebrating: **losing streaks**, **stability streaks**, **milestone crossings** (first time below a quarter-hundred mark), **consistency** (logging regularly), and **journaling streaks**. Awards live on your trophy shelf, and you can choose to let friends see them.
+
+## Weekly recap
+
+Once a week you'll get a **recap card**: your net change (framed positively), your best win, your current streaks, how far you are from your next goal, and any cheers friends sent you. Share it if you'd like.
+
+## Reminders
+
+If you opt in, the app gently nudges you when you haven't logged a weight or journal note in a while. The reminders are warm and low-pressure, and you can turn either one off anytime.
+
+## Journaling — and how your privacy works
+
+After you log your weight, the app invites you to jot down **1–3 things you did today that you're proud of** — like taking the stairs, working out, or playing a sport. You can add a longer reflection, and mark a **non-scale victory** (more energy, clothes fitting better, sleeping well) — those count just as much as the number on the scale.
+
+**Your journal words are private to your device.** Here's exactly how it works:
+
+- The **text** of your journal is stored **only in your browser, on your device.** It is never uploaded.
+- The only thing saved to the app's servers is lightweight **metadata**: the dates you journaled and simple counts. That's what lets the app track your streaks and remind you — without ever seeing what you wrote.
+
+One thing to know: because your journal text lives on your device, it **won't automatically appear on a different browser or computer.** To move it or back it up, use Export/Import.
+
+## Sharing with friends & family
+
+You have a personal **share code** (like `WL-7QK4ZP`), shown on your screen. Give it to people you trust; when you have theirs, you can connect. You choose **exactly how much each person sees**, and can change or revoke it anytime:
+
+- **Show relative gains/losses** — they see your ups and downs, not your actual weight.
+- **Show full weight data** — they see every entry.
+- **Show weekly weight data** — one summary point per week.
+- **Show awards** — only the awards you've earned.
+
+**Your journal is never shared** — it isn't stored on the server, so there's nothing to share unless you export it yourself.
+
+### Cheers
+
+When friends share with you, you can send a quick **cheer** — 👏 💪 🎉 ❤️ and an optional short, positive note — to celebrate their milestones. Cheers are for encouragement only.
+
+## Staying healthy
+
+This app supports healthy change, not extremes. You can set a **healthy floor**, and the app will gently flag targets that go too low and won't celebrate rapid or extreme weight loss. Progress here means sustainable progress.
+
+## Export & import
+
+- **Export** creates a single file with **both** your weight data and your journal (plus goals) — a complete, private backup you control.
+- **Import** loads it back — on a new device, or to restore a backup. It's how you carry your device-local journal with you.
+
+Re-importing is safe; the app avoids duplicates.
+
+## Quick FAQ
+
+**How often should I weigh in?** Once a day, around the same time, is ideal — but whatever you'll stick with is the right answer.
+
+**My weight went up — did I fail?** No. Daily swings are normal. Watch the smoothed trend over weeks, and keep up your habits.
+
+**Can anyone read my journal?** No. The text stays on your device; only dates and counts are stored, and those are never shared.
+
+**Will my journal show up on my other computer?** Not automatically — use Export on one device and Import on the other.
+
+**Can I stop sharing with someone?** Yes, anytime — revoke or change their access and it takes effect immediately.
+
+You've got this. Small, proud-of-yourself actions add up — and Weight: Less is here to help you see them.
+</script>
+
+<script>
+/* ══ CONFIG — same project as the HTML Deck ══ */
+const SUPABASE_URL = 'https://iqhbsjriqlhqgngzhmpr.supabase.co';          // e.g. https://xyz.supabase.co
+const SUPABASE_ANON_KEY = 'sb_publishable_u7vYW9gHBCpM209yJSaOrA_ZOWjGUPe';         // anon public key (safe to embed)
+/* ════════════════════════════════════════════ */
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+let profile = null, entries = [], editingId = null;
+
+/* ── toast ── */
+let toastT;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function setMsg(el, text, kind) { const e=$(el); e.textContent=text; e.className='msg'+(kind?' '+kind:''); }
+
+/* ── help panel ── */
+function renderHelp() {
+  const md = $('help-doc').textContent;
+  $('help-body').innerHTML = marked.parse(md);
+}
+function openHelp() { renderHelp(); $('backdrop').classList.add('show'); $('help-sheet').classList.add('show'); }
+function closeHelp() { $('backdrop').classList.remove('show'); $('help-sheet').classList.remove('show'); }
+$('btn-help').onclick = openHelp;
+$('btn-help-close').onclick = closeHelp;
+$('backdrop').onclick = () => { closeHelp(); };
+$('peek-help').onclick = e => { e.preventDefault(); openHelp(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
+$('help-search').oninput = e => {
+  const q = e.target.value.trim().toLowerCase();
+  renderHelp();
+  if (!q) return;
+  const body = $('help-body');
+  // hide sections (h2 groups) that don't match; keep matching ones
+  const groups = [];
+  let cur = null;
+  [...body.children].forEach(node => {
+    if (node.tagName === 'H2' || node.tagName === 'H1') { cur = { head:node, nodes:[node] }; groups.push(cur); }
+    else if (cur) cur.nodes.push(node);
+  });
+  groups.forEach(g => {
+    const text = g.nodes.map(n => n.textContent).join(' ').toLowerCase();
+    const show = text.includes(q);
+    g.nodes.forEach(n => n.style.display = show ? '' : 'none');
+  });
+};
+
+/* ── welcome tour ── */
+const TOUR = [
+  { glyph:'👋', title:'Welcome to Weight: Less', body:'A kind, private way to track your weight and the small habits that help you feel your best. Let\'s take 20 seconds.' },
+  { glyph:'⚖️', title:'Log in seconds', body:'Type your weight and tap "Log it." Forgot yesterday? Use "Logging for another day" to back-date it.' },
+  { glyph:'🔒', title:'Your privacy matters', body:'Weight data is saved so you can graph and (optionally) share it. Journal writing — coming soon — stays only on your device.' },
+  { glyph:'🤝', title:'Share on your terms', body:'Your share code lets friends connect, and you\'ll always choose exactly what each person sees. Tap "?" anytime for the full guide.' },
+];
+let tourI = 0;
+function showTour() {
+  const seen = localStorage.getItem('wl_tour_done');
+  if (seen) return;
+  tourI = 0; renderTour();
+}
+function renderTour() {
+  const s = TOUR[tourI];
+  const host = $('tour');
+  host.classList.remove('hidden');
+  $('backdrop').classList.add('show');
+  host.innerHTML = `
+    <div class="tour-card">
+      <div class="glyph">${s.glyph}</div>
+      <h2>${s.title}</h2>
+      <p>${s.body}</p>
+      <div class="tour-dots">${TOUR.map((_,i)=>`<i class="${i===tourI?'on':''}"></i>`).join('')}</div>
+      <div class="tour-nav">
+        ${tourI>0?'<button class="btn ghost" id="tour-back">Back</button>':'<button class="btn ghost" id="tour-skip">Skip</button>'}
+        <button class="btn" id="tour-next">${tourI===TOUR.length-1?'Read the guide':'Next'}</button>
+      </div>
+    </div>`;
+  $('tour-next').onclick = () => {
+    if (tourI === TOUR.length-1) { endTour(); openHelp(); }
+    else { tourI++; renderTour(); }
+  };
+  if ($('tour-back')) $('tour-back').onclick = () => { tourI--; renderTour(); };
+  if ($('tour-skip')) $('tour-skip').onclick = endTour;
+}
+function endTour() {
+  localStorage.setItem('wl_tour_done','1');
+  $('tour').classList.add('hidden'); $('tour').innerHTML='';
+  if (!$('help-sheet').classList.contains('show')) $('backdrop').classList.remove('show');
+}
+
+/* ── auth ── */
+$('btn-login').onclick = async () => {
+  setMsg('login-msg','Signing in…');
+  const { error } = await sb.auth.signInWithPassword({
+    email: $('in-email').value.trim(), password: $('in-pass').value });
+  if (error) setMsg('login-msg', friendlyAuthError(error.message), 'err');
+};
+$('in-pass').addEventListener('keydown', e => { if (e.key==='Enter') $('btn-login').click(); });
+$('btn-logout').onclick = () => sb.auth.signOut();
+
+function friendlyAuthError(m) {
+  if (/invalid login/i.test(m)) return 'That email and passcode didn\'t match. Give it another try.';
+  return m;
+}
+
+sb.auth.onAuthStateChange(async (_e, session) => {
+  if (session) {
+    $('view-login').classList.add('hidden');
+    $('view-app').classList.remove('hidden');
+    await loadProfile();
+    await loadEntries();
+    showTour();
+  } else {
+    $('view-app').classList.add('hidden');
+    $('view-login').classList.remove('hidden');
+    profile = null; entries = [];
+  }
+});
+
+/* ── profile / share code ── */
+async function loadProfile() {
+  const { data, error } = await sb.from('wl_profiles').select('*').single();
+  if (error) { console.warn(error); return; }
+  profile = data;
+  $('share-code').textContent = data.share_code;
+  document.querySelectorAll('.unit-lbl').forEach(e => e.textContent = data.unit || 'lb');
+}
+$('btn-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('share-code').textContent); toast('Share code copied 🎉'); }
+  catch { toast('Copy failed — select it manually'); }
+};
+
+/* ── weight logging ── */
+$('btn-log').onclick = async () => {
+  const val = parseFloat($('in-weight').value);
+  if (!val || val <= 0) { setMsg('log-msg','Enter a weight to log.', 'err'); return; }
+  const whenEl = $('in-when').value;
+  const entered_at = whenEl ? new Date(whenEl).toISOString() : new Date().toISOString();
+
+  if (editingId) {
+    const { error } = await sb.from('wl_weight_entries')
+      .update({ weight_lb: val, entered_at, updated_at: new Date().toISOString() })
+      .eq('id', editingId);
+    if (error) return setMsg('log-msg', error.message, 'err');
+    editingId = null; $('btn-log').textContent = 'Log it';
+    toast('Entry updated');
+  } else {
+    const { error } = await sb.from('wl_weight_entries').insert({ weight_lb: val, entered_at });
+    if (error) return setMsg('log-msg', error.message, 'err');
+    toast('Nice — logged! 🎉');
+    $('journal-nudge').classList.remove('hidden');   // gently invite a journal win
+  }
+  $('in-weight').value=''; $('in-when').value=''; setMsg('log-msg','');
+  await loadEntries();
+};
+
+async function loadEntries() {
+  const { data, error } = await sb.from('wl_weight_entries')
+    .select('id, weight_lb, entered_at').order('entered_at', { ascending:false });
+  if (error) { console.warn(error); return; }
+  entries = data || [];
+  renderEntries();
+}
+
+function renderEntries() {
+  const host = $('entries');
+  if (!entries.length) {
+    host.innerHTML = `<div class="empty"><div class="big">📈</div>
+      <p><strong>No entries yet.</strong><br>Log your first weight above to start your journey.</p></div>`;
+    return;
+  }
+  const unit = (profile && profile.unit) || 'lb';
+  host.innerHTML = entries.map(e => {
+    const d = new Date(e.entered_at);
+    const when = d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}) +
+                 ' · ' + d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+    return `<div class="entry">
+      <div class="w">${e.weight_lb.toFixed(1)} <small>${unit}</small></div>
+      <div class="when">${when}</div>
+      <div class="acts">
+        <button data-edit="${e.id}">Edit</button>
+        <button data-del="${e.id}">Delete</button>
+      </div></div>`;
+  }).join('');
+  host.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => startEdit(b.dataset.edit));
+  host.querySelectorAll('[data-del]').forEach(b => b.onclick = () => delEntry(b.dataset.del));
+}
+
+function startEdit(id) {
+  const e = entries.find(x => x.id === id); if (!e) return;
+  editingId = id;
+  $('in-weight').value = e.weight_lb;
+  const d = new Date(e.entered_at);
+  // format for datetime-local (local time)
+  const pad = n => String(n).padStart(2,'0');
+  $('in-when').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  $('in-weight').closest('.card').querySelector('details').open = true;
+  $('btn-log').textContent = 'Save';
+  setMsg('log-msg','Editing an entry — change it and tap Save.', 'ok');
+  $('in-weight').focus();
+}
+
+async function delEntry(id) {
+  if (!confirm('Delete this entry? This can\'t be undone.')) return;
+  const { error } = await sb.from('wl_weight_entries').delete().eq('id', id);
+  if (error) return toast(error.message);
+  if (editingId === id) { editingId=null; $('btn-log').textContent='Log it'; $('in-weight').value=''; }
+  toast('Entry deleted');
+  await loadEntries();
+}
+
+/* ══════════════ PHASE 2 — GRAPH ══════════════ */
+let chart = null;
+let chartMode = 'trend';          // 'trend' | 'raw'
+let activeWindow = '7';           // window key
+let customFrom = null, customTo = null;
+
+/* window key -> [fromDate, toDate] */
+function windowRange(key) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(startOfToday.getTime() + 86400000); // end of today
+  switch (key) {
+    case '7':   return [new Date(end - 7*86400000), end];
+    case '182': return [new Date(end - 182*86400000), end];
+    case 'tmonth': return [new Date(now.getFullYear(), now.getMonth(), 1), end];
+    case 'lmonth': return [new Date(now.getFullYear(), now.getMonth()-1, 1),
+                           new Date(now.getFullYear(), now.getMonth(), 1)];
+    case 'tyear':  return [new Date(now.getFullYear(), 0, 1), end];
+    case 'custom':
+      if (customFrom && customTo)
+        return [new Date(customFrom+'T00:00'), new Date(customTo+'T23:59')];
+      return [new Date(end - 30*86400000), end];
+    default: return [new Date(end - 7*86400000), end];
+  }
+}
+
+/* Exponential moving average over time-ordered points -> smoothed series */
+function smoothSeries(points) {
+  if (points.length < 2) return points.map(p => ({ x:p.x, y:p.y }));
+  // adaptive span: gentler smoothing for short windows
+  const alpha = points.length > 30 ? 0.18 : 0.35;
+  let ema = points[0].y;
+  return points.map((p, i) => {
+    ema = i === 0 ? p.y : alpha * p.y + (1 - alpha) * ema;
+    return { x: p.x, y: Math.round(ema * 100) / 100 };
+  });
+}
+
+function pointsInRange() {
+  const [from, to] = windowRange(activeWindow);
+  return entries
+    .map(e => ({ x: new Date(e.entered_at), y: e.weight_lb }))
+    .filter(p => p.x >= from && p.x <= to)
+    .sort((a, b) => a.x - b.x);
+}
+
+function renderChart() {
+  const pts = pointsInRange();
+  const unit = (profile && profile.unit) || 'lb';
+  const wrap = $('chart-wrap') || document.querySelector('.chart-wrap');
+  // empty state
+  if (pts.length === 0) {
+    $('graph-empty').classList.remove('hidden');
+    document.querySelector('.chart-wrap').style.display = 'none';
+    $('stat-strip').innerHTML = '';
+    if (chart) { chart.destroy(); chart = null; }
+    return;
+  }
+  $('graph-empty').classList.add('hidden');
+  document.querySelector('.chart-wrap').style.display = '';
+
+  const series = (chartMode === 'trend') ? smoothSeries(pts) : pts;
+  const [from, to] = windowRange(activeWindow);
+
+  const dataset = {
+    label: chartMode === 'trend' ? 'Trend' : 'Weight',
+    data: series,
+    borderColor: '#F5576C',
+    backgroundColor: 'rgba(245,87,108,0.10)',
+    borderWidth: 3,
+    tension: chartMode === 'trend' ? 0.4 : 0,
+    pointRadius: chartMode === 'trend' ? 0 : 4,
+    pointBackgroundColor: '#F09819',
+    pointBorderColor: '#fff',
+    pointBorderWidth: 2,
+    fill: true,
+  };
+  // In trend mode, add faint raw dots for context
+  const datasets = [dataset];
+  if (chartMode === 'trend' && pts.length <= 120) {
+    datasets.push({
+      label: 'Readings', data: pts, showLine: false,
+      pointRadius: 2.5, pointBackgroundColor: 'rgba(240,152,25,0.55)',
+      pointBorderWidth: 0,
+    });
+  }
+
+  // friend overlays (shaped by their share tier)
+  if(typeof friendOverlayDatasets === 'function'){
+    friendOverlayDatasets(from, to).forEach(ds => datasets.push(ds));
+  }
+
+  // prediction ("Ghost of Weight Future") — may extend the x-axis
+  let xMax = to;
+  let ghostDs = [];
+  if(showPrediction && typeof computePrediction === 'function'){
+    const pred = computePrediction();
+    if(pred){
+      const proj = projectionDatasets(pred.fit);
+      ghostDs = proj.datasets;
+      xMax = new Date(Math.max(to.getTime(), proj.endDate.getTime()));
+    }
+  }
+
+  // dotted goal / milestone / floor lines spanning the (possibly extended) window
+  const gLines = (typeof activeGoalLines === 'function') ? activeGoalLines() : [];
+  gLines.forEach(g => {
+    datasets.push({
+      label: g.label,
+      data: [{ x: from, y: g.value }, { x: xMax, y: g.value }],
+      borderColor: g.color, borderWidth: 2, borderDash: [6, 5],
+      pointRadius: 0, fill: false, tension: 0, _goal: true,
+    });
+  });
+  ghostDs.forEach(ds => datasets.push(ds));
+
+  const cfg = {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#2B2138', padding: 10, cornerRadius: 10, titleFont:{family:'Poppins'},
+          bodyFont:{family:'Poppins'},
+          filter: it => !it.dataset._band,           // hide the band edges from tooltips
+          callbacks: {
+            title: items => new Date(items[0].parsed.x).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}),
+            label: it => {
+              const ds = it.dataset;
+              if(ds._goal) return ` ${ds.label}: ${it.parsed.y.toFixed(0)} ${unit}`;
+              if(ds._ghost) return ` Projected: ~${it.parsed.y.toFixed(1)} ${unit}`;
+              if(ds._relative){                       // hide absolute for relative-tier friends
+                const delta = it.parsed.y - ds._baseline;
+                return ` ${ds.label}: ${delta>=0?'+':''}${delta.toFixed(1)} ${unit}`;
+              }
+              if(ds._friend) return ` ${ds.label}: ${it.parsed.y.toFixed(1)} ${unit}`;
+              return ` ${it.parsed.y.toFixed(1)} ${unit}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { type:'time', min: from, max: xMax,
+             time:{ tooltipFormat:'PP', unit: (xMax>to ? 'week' : pickTimeUnit(activeWindow)) },
+             grid:{ display:false }, ticks:{ color:'#8A8296', font:{family:'Poppins',size:11}, maxRotation:0, autoSkipPadding:16 } },
+        y: { grid:{ color:'#F1E9F0' }, ticks:{ color:'#8A8296', font:{family:'Poppins',size:11},
+             callback:v => v+' '+unit } },
+      },
+    },
+  };
+  if (chart) chart.destroy();
+  chart = new Chart($('chart').getContext('2d'), cfg);
+  renderStats(pts, unit);
+  if (typeof renderPrediction === 'function') renderPrediction();
+}
+
+function pickTimeUnit(key) {
+  if (key === '7') return 'day';
+  if (key === '182' || key === 'tyear') return 'month';
+  return 'day';
+}
+
+function renderStats(pts, unit) {
+  const strip = $('stat-strip');
+  if (pts.length < 1) { strip.innerHTML=''; return; }
+  const first = pts[0].y, last = pts[pts.length-1].y;
+  const change = last - first;
+  const dir = change < 0 ? 'down' : (change > 0 ? 'up' : '');
+  const sign = change > 0 ? '+' : '';
+  const latest = entries.length ? entries[0].weight_lb : last;
+  strip.innerHTML = `
+    <div class="stat"><div class="n">${latest.toFixed(1)}<span style="font-size:13px"> ${unit}</span></div><div class="l">Latest</div></div>
+    <div class="stat"><div class="n ${dir}">${sign}${change.toFixed(1)}</div><div class="l">Change this window</div></div>
+    <div class="stat"><div class="n">${pts.length}</div><div class="l">Entries shown</div></div>`;
+}
+
+/* controls */
+function setMode(mode) {
+  chartMode = mode;
+  document.querySelectorAll('#mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode===mode));
+  $('graph-cap').textContent = mode === 'trend'
+    ? "Your weight over time. The smoothed trend line shows the real direction you're heading — daily wobble is normal."
+    : "Every reading you've logged, shown as-is. Great for spotting individual days.";
+  renderChart();
+  // persist preference
+  if (profile && profile.chart_mode !== mode) {
+    profile.chart_mode = mode;
+    sb.from('wl_profiles').update({ chart_mode: mode }).eq('user_id', profile.user_id).then(()=>{});
+  }
+}
+document.querySelectorAll('#mode-seg button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+
+function setWindow(key) {
+  activeWindow = key;
+  document.querySelectorAll('#windows button').forEach(b => b.classList.toggle('on', b.dataset.win===key));
+  $('custom-range').classList.toggle('hidden', key !== 'custom');
+  if (key !== 'custom') renderChart();
+}
+document.querySelectorAll('#windows button').forEach(b => b.onclick = () => setWindow(b.dataset.win));
+$('range-apply').onclick = () => {
+  customFrom = $('range-from').value; customTo = $('range-to').value;
+  if (!customFrom || !customTo) { toast('Pick both dates'); return; }
+  renderChart();
+};
+
+/* ══════════════ PHASE 3 — JOURNAL ══════════════ */
+/* Text lives ONLY in localStorage; metadata (dates/counts) syncs to wl_journal_meta. */
+let journalMeta = [];        // rows from wl_journal_meta (newest first)
+let nsvOn = false;
+let editingJournalId = null;
+
+function jKey(id) {                        // user-scoped local key (privacy on shared browsers)
+  const uid = (profile && profile.user_id) || 'anon';
+  return `wl_journal_${uid}_${id}`;
+}
+function saveLocalJournal(id, obj) { localStorage.setItem(jKey(id), JSON.stringify(obj)); }
+function loadLocalJournal(id) {
+  try { return JSON.parse(localStorage.getItem(jKey(id))); } catch { return null; }
+}
+function removeLocalJournal(id) { localStorage.removeItem(jKey(id)); }
+
+/* NSV toggle */
+$('nsv-toggle').onclick = () => {
+  nsvOn = !nsvOn;
+  $('nsv-toggle').classList.toggle('on', nsvOn);
+  $('nsv-box').textContent = nsvOn ? '✓' : '';
+};
+$('journal-privacy-link').onclick = e => { e.preventDefault(); openHelpAt('journaling'); };
+
+function readJournalForm() {
+  const wins = [...document.querySelectorAll('#wins .win')].map(i => i.value.trim()).filter(Boolean);
+  const body = $('journal-body').value.trim();
+  return { wins, body, nsv: nsvOn };
+}
+function clearJournalForm() {
+  document.querySelectorAll('#wins .win').forEach(i => i.value = '');
+  $('journal-body').value = '';
+  nsvOn = false; $('nsv-toggle').classList.remove('on'); $('nsv-box').textContent='';
+  editingJournalId = null;
+  $('btn-journal-save').textContent = 'Save entry';
+  $('btn-journal-cancel').classList.add('hidden');
+  setMsg('journal-msg','');
+}
+$('btn-journal-cancel').onclick = clearJournalForm;
+
+$('btn-journal-save').onclick = async () => {
+  const data = readJournalForm();
+  if (!data.wins.length && !data.body) { setMsg('journal-msg','Add a win or a note first.', 'err'); return; }
+
+  const id = editingJournalId || uuid();
+  const meta = {
+    id, win_count: Math.min(data.wins.length, 3),
+    has_nsv: data.nsv, has_text: !!data.body,
+  };
+  // 1) text stays local
+  saveLocalJournal(id, { wins: data.wins, body: data.body, nsv: data.nsv,
+                         entered_at: editingJournalId ? undefined : new Date().toISOString() });
+  // 2) metadata to DB (upsert)
+  let dbErr;
+  if (editingJournalId) {
+    const { error } = await sb.from('wl_journal_meta')
+      .update({ win_count: meta.win_count, has_nsv: meta.has_nsv, has_text: meta.has_text })
+      .eq('id', id);
+    dbErr = error;
+  } else {
+    const { error } = await sb.from('wl_journal_meta').insert(meta);
+    dbErr = error;
+  }
+  if (dbErr) { setMsg('journal-msg', dbErr.message, 'err'); return; }
+
+  toast(editingJournalId ? 'Journal updated' : 'Saved — nice work 🌟');
+  $('journal-nudge').classList.add('hidden');
+  clearJournalForm();
+  await loadJournal();
+};
+
+async function loadJournal() {
+  const { data, error } = await sb.from('wl_journal_meta')
+    .select('id, entered_at, win_count, has_nsv, has_text')
+    .order('entered_at', { ascending:false });
+  if (error) { console.warn(error); return; }
+  journalMeta = data || [];
+  renderJournal();
+}
+
+function renderJournal() {
+  const host = $('journal-list');
+  if (!journalMeta.length) {
+    host.innerHTML = `<div class="empty"><div class="big">📝</div>
+      <p><strong>No journal entries yet.</strong><br>Jot down a win above — it only takes a few words.</p></div>`;
+    return;
+  }
+  host.innerHTML = journalMeta.map(m => {
+    const local = loadLocalJournal(m.id);
+    const d = new Date(m.entered_at);
+    const date = d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}) +
+                 ' · ' + d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+    const nsv = m.has_nsv ? '<span class="badge">💪 Non-scale win</span>' : '';
+    let content;
+    if (local) {
+      const wins = (local.wins||[]).map(w => `<li>${escapeHtml(w)}</li>`).join('');
+      content =
+        (wins ? `<ul class="jwins">${wins}</ul>` : '') +
+        (local.body ? `<div class="jbody">${escapeHtml(local.body)}</div>` : '');
+    } else {
+      // metadata exists but text isn't on this device
+      content = `<div class="elsewhere">✍️ Written on another device — import your backup here to see the words. (${m.win_count} win${m.win_count===1?'':'s'} logged)</div>`;
+    }
+    return `<div class="jentry">
+      <div class="jdate">${date} ${nsv}
+        <span style="flex:1"></span>
+        <span class="jacts">
+          ${local ? `<button data-jedit="${m.id}">Edit</button>` : ''}
+          <button data-jdel="${m.id}">Delete</button>
+        </span>
+      </div>
+      ${content}
+    </div>`;
+  }).join('');
+  host.querySelectorAll('[data-jedit]').forEach(b => b.onclick = () => startJournalEdit(b.dataset.jedit));
+  host.querySelectorAll('[data-jdel]').forEach(b => b.onclick = () => delJournal(b.dataset.jdel));
+}
+
+function startJournalEdit(id) {
+  const local = loadLocalJournal(id); if (!local) return;
+  editingJournalId = id;
+  const wins = local.wins || [];
+  document.querySelectorAll('#wins .win').forEach((inp,i) => inp.value = wins[i] || '');
+  $('journal-body').value = local.body || '';
+  nsvOn = !!local.nsv; $('nsv-toggle').classList.toggle('on', nsvOn); $('nsv-box').textContent = nsvOn?'✓':'';
+  $('btn-journal-save').textContent = 'Save changes';
+  $('btn-journal-cancel').classList.remove('hidden');
+  setMsg('journal-msg','Editing this entry.', 'ok');
+  $('journal-card').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+async function delJournal(id) {
+  if (!confirm('Delete this journal entry? The note on this device and its record will be removed.')) return;
+  const { error } = await sb.from('wl_journal_meta').delete().eq('id', id);
+  if (error) return toast(error.message);
+  removeLocalJournal(id);
+  if (editingJournalId === id) clearJournalForm();
+  toast('Journal entry deleted');
+  await loadJournal();
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function uuid(){
+  if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch(e){} }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8); return v.toString(16);
+  });
+}
+
+/* ══════════════ PHASE 4 — GOALS, MILESTONES & GUARDRAILS ══════════════ */
+/* Custom goals + the healthy floor live in wl_goals (kind 'custom' / 'floor').
+   Quarter-hundred milestones are virtual (computed from latest weight); their
+   enabled/disabled state is kept in localStorage to avoid DB clutter. */
+let goals = [];              // rows from wl_goals
+const GOAL_COLOR = '#F5576C';
+const MILE_COLOR = '#F09819';
+const FLOOR_COLOR = '#1a9e6a';
+
+function latestWeight() { return entries.length ? entries[0].weight_lb : null; }
+function floorGoal() { return goals.find(g => g.kind === 'floor') || null; }
+function getFloor() { const f = floorGoal(); return f ? f.target_lb : null; }   // used by prediction (Phase 7)
+
+/* localStorage: which milestone marks are switched ON (kept small so the graph
+   isn't squished — defaults to just the nearest mark until the user chooses). */
+function mileOnKey() { return `wl_mile_on_${(profile&&profile.user_id)||'anon'}`; }
+function getEnabledMiles() {
+  const raw = localStorage.getItem(mileOnKey());
+  if (raw == null) return null;                 // null = uninitialised (use default)
+  try { return new Set(JSON.parse(raw)); } catch { return new Set(); }
+}
+function setMileEnabled(mark, on) {
+  let s = getEnabledMiles();
+  if (s == null) { const m = computeMarks(); s = new Set(m.length ? [m[0]] : []); }
+  if (on) s.add(mark); else s.delete(mark);
+  localStorage.setItem(mileOnKey(), JSON.stringify([...s]));
+}
+
+/* raw list of quarter-hundred marks below the latest weight (down to floor/100) */
+function computeMarks() {
+  const w = latestWeight(); if (!w) return [];
+  const floor = getFloor();
+  const lower = floor ? Math.max(floor, 100) : 100;
+  const marks = [];
+  let m = Math.floor((w - 0.01) / 25) * 25;
+  while (m >= lower && marks.length < 5) { marks.push(m); m -= 25; }
+  return marks;
+}
+function computeMilestones() {
+  const marks = computeMarks();
+  const on = getEnabledMiles();
+  return marks.map((mark, i) => ({
+    mark,
+    enabled: on ? on.has(mark) : i === 0,       // default: only the nearest mark on
+  }));
+}
+
+async function loadGoals() {
+  const { data, error } = await sb.from('wl_goals')
+    .select('id, label, target_lb, kind, enabled').order('target_lb', { ascending:false });
+  if (error) { console.warn(error); return; }
+  goals = data || [];
+  // reflect floor into the input
+  const f = floorGoal();
+  $('in-floor').value = f ? f.target_lb : '';
+  $('btn-floor-clear').classList.toggle('hidden', !f);
+  renderGoals();
+}
+
+function renderGoals() {
+  // custom goals
+  const custom = goals.filter(g => g.kind === 'custom');
+  const gl = $('goals-list');
+  gl.innerHTML = custom.length ? custom.map(g => `
+    <div class="goal-row">
+      <span class="swatch" style="background:${GOAL_COLOR}"></span>
+      <div class="gname">${escapeHtml(g.label)}<small>${goalProgress(g.target_lb)}</small></div>
+      <span class="gtarget">${g.target_lb.toFixed(0)} <span class="muted" style="font-size:12px">${unit()}</span></span>
+      <div class="switch ${g.enabled?'on':''}" data-goal="${g.id}"><i></i></div>
+      <button class="gdel" data-goaldel="${g.id}">Delete</button>
+    </div>`).join('')
+    : `<p class="hint" style="padding:6px 0;">No custom goals yet — add one above and it'll show as a dotted line on your graph.</p>`;
+  gl.querySelectorAll('[data-goal]').forEach(el => el.onclick = () => toggleGoal(el.dataset.goal));
+  gl.querySelectorAll('[data-goaldel]').forEach(b => b.onclick = () => deleteGoal(b.dataset.goaldel));
+
+  // milestones (virtual)
+  const miles = computeMilestones();
+  const ml = $('milestones-list');
+  ml.innerHTML = miles.length ? miles.map(m => `
+    <div class="goal-row">
+      <span class="swatch" style="background:${MILE_COLOR}"></span>
+      <div class="gname">Get below ${m.mark} ${unit()}<small>${goalProgress(m.mark)}</small></div>
+      <div class="switch ${m.enabled?'on':''}" data-mile="${m.mark}"><i></i></div>
+    </div>`).join('')
+    : `<p class="hint" style="padding:6px 0;">Log a weight and your next milestones appear here.</p>`;
+  ml.querySelectorAll('[data-mile]').forEach(el => el.onclick = () => {
+    const mark = +el.dataset.mile;
+    setMileEnabled(mark, !el.classList.contains('on'));
+    renderGoals(); renderChart();
+  });
+}
+
+function unit() { return (profile && profile.unit) || 'lb'; }
+function goalProgress(target) {
+  const w = latestWeight(); if (w == null) return 'Log a weight to track progress';
+  const diff = w - target;
+  if (diff <= 0) return '🎉 Reached!';
+  return `${diff.toFixed(1)} ${unit()} to go`;
+}
+
+/* healthy guardrail: is a target sensibly above the floor? */
+function belowFloor(target) { const f = getFloor(); return f != null && target < f; }
+
+$('btn-goal-add').onclick = async () => {
+  const label = $('goal-label').value.trim();
+  const target = parseFloat($('goal-target').value);
+  if (!label) { setMsg('goal-msg','Give your goal a name.', 'err'); return; }
+  if (!target || target <= 0) { setMsg('goal-msg','Enter a target weight.', 'err'); return; }
+  if (belowFloor(target)) {
+    if (!confirm(`That target (${target} ${unit()}) is below your healthy floor of ${getFloor()} ${unit()}.\n\nWeight: Less is built for sustainable, healthy change. Are you sure you want to add it?`)) return;
+  }
+  const { error } = await sb.from('wl_goals').insert({ label, target_lb: target, kind:'custom', enabled:true });
+  if (error) { setMsg('goal-msg', error.message, 'err'); return; }
+  $('goal-label').value=''; $('goal-target').value=''; setMsg('goal-msg','');
+  toast('Goal added ✨');
+  await loadGoals(); renderChart();
+};
+
+async function toggleGoal(id) {
+  const g = goals.find(x => x.id === id); if (!g) return;
+  const { error } = await sb.from('wl_goals').update({ enabled: !g.enabled }).eq('id', id);
+  if (error) return toast(error.message);
+  g.enabled = !g.enabled; renderGoals(); renderChart();
+}
+async function deleteGoal(id) {
+  if (!confirm('Delete this goal?')) return;
+  const { error } = await sb.from('wl_goals').delete().eq('id', id);
+  if (error) return toast(error.message);
+  toast('Goal removed'); await loadGoals(); renderChart();
+}
+
+/* healthy floor */
+$('btn-floor-save').onclick = async () => {
+  const val = parseFloat($('in-floor').value);
+  if (!val || val <= 0) { toast('Enter a floor weight'); return; }
+  const existing = floorGoal();
+  const row = { label:'Healthy floor', target_lb: val, kind:'floor', enabled:true };
+  const { error } = existing
+    ? await sb.from('wl_goals').update(row).eq('id', existing.id)
+    : await sb.from('wl_goals').insert(row);
+  if (error) return toast(error.message);
+  toast('Healthy floor set 🛟');
+  await loadGoals(); renderChart();
+};
+$('btn-floor-clear').onclick = async () => {
+  const existing = floorGoal(); if (!existing) return;
+  const { error } = await sb.from('wl_goals').delete().eq('id', existing.id);
+  if (error) return toast(error.message);
+  $('in-floor').value=''; toast('Floor cleared');
+  await loadGoals(); renderChart();
+};
+
+/* goal lines for the chart: [{value, color, label, dash}] */
+function activeGoalLines() {
+  const lines = [];
+  goals.filter(g => g.kind === 'custom' && g.enabled)
+    .forEach(g => lines.push({ value:g.target_lb, color:GOAL_COLOR, label:g.label }));
+  computeMilestones().filter(m => m.enabled)
+    .forEach(m => lines.push({ value:m.mark, color:MILE_COLOR, label:`Below ${m.mark}` }));
+  const f = floorGoal();
+  if (f) lines.push({ value:f.target_lb, color:FLOOR_COLOR, label:'Healthy floor' });
+  return lines;
+}
+
+/* ══════════════ PHASE 5 — AWARDS, RECAP & REMINDERS ══════════════ */
+let awardsEarned = [];    // rows from wl_awards
+let reminderDismissed = false;
+
+/* ── date helpers ── */
+function dayKey(d){ const x=new Date(d); return `${x.getFullYear()}-${x.getMonth()+1}-${x.getDate()}`; }
+function uniqueDays(arr){ return [...new Set(arr.map(dayKey))]; }
+function trailingDayStreak(dayKeys){
+  if(!dayKeys.length) return 0;
+  const set = new Set(dayKeys);
+  const days = dayKeys.map(k=>{ const [y,m,d]=k.split('-').map(Number); return new Date(y,m-1,d); })
+                      .sort((a,b)=>a-b);
+  let cur = days[days.length-1], streak = 1;
+  while(true){ const p=new Date(cur); p.setDate(p.getDate()-1); if(set.has(dayKey(p))){ streak++; cur=p; } else break; }
+  return streak;
+}
+function chronEntries(){ return [...entries].sort((a,b)=>new Date(a.entered_at)-new Date(b.entered_at)); }
+
+/* ── the awards engine ── */
+function computeEarnedAwards(){
+  const earned = [];
+  const chron = chronEntries();
+  if(!chron.length) return earned;
+  const ws = chron.map(e=>e.weight_lb);
+  const latest = ws[ws.length-1];
+  const maxW = Math.max(...ws);
+
+  // losing streak: consecutive non-increasing entries from the most recent
+  let run = 1;
+  for(let i=chron.length-1;i>0;i--){ if(chron[i].weight_lb <= chron[i-1].weight_lb) run++; else break; }
+  if(run>=3) earned.push({code:'streak_loss_3', title:'Three in a row', icon:'🔥', desc:'3 entries trending down'});
+  if(run>=5) earned.push({code:'streak_loss_5', title:'Five in a row', icon:'🔥', desc:'5 entries trending down'});
+  if(run>=7) earned.push({code:'streak_loss_7', title:'On a roll', icon:'🚀', desc:'7 entries trending down'});
+
+  // quarter-hundred crossings
+  for(let mark=100; mark<=500; mark+=25){
+    if(latest < mark && maxW >= mark)
+      earned.push({code:`cross_below_${mark}`, title:`Below ${mark}!`, icon:'🎯', desc:`Crossed under ${mark} ${unit()}`});
+  }
+
+  // weigh-in consistency (consecutive calendar days logged)
+  const wStreak = trailingDayStreak(uniqueDays(chron.map(e=>e.entered_at)));
+  if(wStreak>=7)   earned.push({code:'daily_7',   title:'Steady week', icon:'📅', desc:'Logged 7 days running'});
+  if(wStreak>=30)  earned.push({code:'daily_30',  title:'Solid month', icon:'📆', desc:'Logged 30 days running'});
+  if(wStreak>=100) earned.push({code:'daily_100', title:'Century club', icon:'💯', desc:'Logged 100 days running'});
+
+  // stability streaks (held within a band over a period)
+  if(isStable(chron,14,2))   earned.push({code:'stable_14', title:'Steady as she goes', icon:'⚖️', desc:'Held steady for 2 weeks'});
+  if(isStable(chron,30,2.5)) earned.push({code:'stable_30', title:'Rock steady', icon:'🪨', desc:'Held steady for a month'});
+
+  // journaling streaks
+  const jStreak = trailingDayStreak(uniqueDays(journalMeta.map(m=>m.entered_at)));
+  if(jStreak>=3)  earned.push({code:'journal_3',  title:'Reflective', icon:'✍️', desc:'Journaled 3 days running'});
+  if(jStreak>=7)  earned.push({code:'journal_7',  title:'Thoughtful week', icon:'📓', desc:'Journaled 7 days running'});
+  if(jStreak>=30) earned.push({code:'journal_30', title:'Deep habit', icon:'🧠', desc:'Journaled 30 days running'});
+
+  return earned;
+}
+function isStable(chron, days, span){
+  const cutoff = Date.now() - days*86400000;
+  const recent = chron.filter(e=>new Date(e.entered_at).getTime() >= cutoff);
+  if(recent.length < 3) return false;
+  const firstT = new Date(recent[0].entered_at).getTime();
+  if(Date.now() - firstT < days*0.6*86400000) return false;  // needs to actually span the period
+  const ws = recent.map(e=>e.weight_lb);
+  return (Math.max(...ws) - Math.min(...ws)) <= span;
+}
+
+async function loadAwards(){
+  const { data, error } = await sb.from('wl_awards')
+    .select('code, title, earned_at').order('earned_at', { ascending:false });
+  if(error){ console.warn(error); return; }
+  awardsEarned = data || [];
+  renderTrophy();
+}
+async function checkAwards(){
+  const earned = computeEarnedAwards();
+  const have = new Set(awardsEarned.map(a=>a.code));
+  const fresh = earned.filter(e=>!have.has(e.code));
+  if(fresh.length){
+    const { error } = await sb.from('wl_awards')
+      .insert(fresh.map(e=>({ code:e.code, title:e.title })));
+    if(error){ console.warn(error); }
+    else {
+      await loadAwards();
+      toast(`🏆 New award: ${fresh[0].title}${fresh.length>1?` (+${fresh.length-1} more)`:''}`);
+    }
+  }
+}
+/* icon/desc for a stored award code (recompute the catalog to decorate) */
+function decorate(code, title){
+  const cat = {
+    streak_loss_3:['🔥','3 entries trending down'], streak_loss_5:['🔥','5 entries trending down'],
+    streak_loss_7:['🚀','7 entries trending down'], daily_7:['📅','Logged 7 days running'],
+    daily_30:['📆','Logged 30 days running'], daily_100:['💯','Logged 100 days running'],
+    stable_14:['⚖️','Held steady for 2 weeks'], stable_30:['🪨','Held steady for a month'],
+    journal_3:['✍️','Journaled 3 days running'], journal_7:['📓','Journaled 7 days running'],
+    journal_30:['🧠','Journaled 30 days running'],
+  };
+  if(code.startsWith('cross_below_')) return ['🎯', `Crossed under ${code.split('_').pop()} ${unit()}`];
+  return cat[code] || ['🏅', title];
+}
+function renderTrophy(){
+  const host = $('awards-list');
+  if(!awardsEarned.length){
+    host.innerHTML = `<div class="empty"><div class="big">🏆</div>
+      <p><strong>Your shelf is ready.</strong><br>Log and journal a little and your first award will land here.</p></div>`;
+    return;
+  }
+  host.innerHTML = `<div class="award-grid">` + awardsEarned.map(a=>{
+    const [icon,desc] = decorate(a.code, a.title);
+    return `<div class="award"><div class="ai">${icon}</div><div class="at">${escapeHtml(a.title)}</div><div class="ad">${escapeHtml(desc)}</div></div>`;
+  }).join('') + `</div>`;
+}
+
+/* ── weekly recap ── */
+async function getCheersCount(){
+  if(!profile) return 0;
+  const since = new Date(Date.now()-7*86400000).toISOString();
+  const { count, error } = await sb.from('wl_cheers')
+    .select('*', { count:'exact', head:true })
+    .eq('to_id', profile.user_id).gte('created_at', since);
+  return error ? 0 : (count||0);
+}
+async function renderRecap(){
+  const grid = $('recap-grid'); const winEl = $('recap-win');
+  const chron = chronEntries();
+  const weekAgo = Date.now()-7*86400000;
+  const recent = chron.filter(e=>new Date(e.entered_at).getTime()>=weekAgo);
+
+  let changeHtml = `<div class="rv"><small>—</small></div>`;
+  if(recent.length>=2){
+    const change = recent[recent.length-1].weight_lb - recent[0].weight_lb;
+    const dir = change<0?'down':(change>0?'up':'');
+    const sign = change>0?'+':'';
+    changeHtml = `<div class="rv ${dir}">${sign}${change.toFixed(1)} <small>${unit()}</small></div>`;
+  }
+  const wStreak = trailingDayStreak(uniqueDays(chron.map(e=>e.entered_at)));
+  const jStreak = trailingDayStreak(uniqueDays(journalMeta.map(m=>m.entered_at)));
+
+  // distance to nearest enabled target below latest
+  let nextGoalHtml = '<div class="rv"><small>Set a goal</small></div>';
+  const w = latestWeight();
+  if(w!=null){
+    const targets = activeGoalLines().map(g=>g.value).filter(v=>v<w);
+    if(targets.length){ const nearest=Math.max(...targets); nextGoalHtml=`<div class="rv">${(w-nearest).toFixed(1)} <small>${unit()} to go</small></div>`; }
+  }
+  const cheers = await getCheersCount();
+
+  grid.innerHTML = `
+    <div class="recap-item"><div class="rl">Change this week</div>${changeHtml}</div>
+    <div class="recap-item"><div class="rl">Weigh-in streak</div><div class="rv">${wStreak} <small>day${wStreak===1?'':'s'}</small></div></div>
+    <div class="recap-item"><div class="rl">Journal streak</div><div class="rv">${jStreak} <small>day${jStreak===1?'':'s'}</small></div></div>
+    <div class="recap-item"><div class="rl">To next goal</div>${nextGoalHtml}</div>
+    ${cheers?`<div class="recap-item"><div class="rl">Cheers received</div><div class="rv">${cheers} 👏</div></div>`:''}`;
+
+  // best recent win (text is local)
+  let win = '';
+  for(const m of journalMeta){
+    if(new Date(m.entered_at).getTime()<weekAgo) break;
+    const local = loadLocalJournal(m.id);
+    if(local && local.wins && local.wins.length){ win = local.wins[0]; break; }
+  }
+  winEl.textContent = win
+    ? `💪 A win you logged this week: "${win}" — keep it up.`
+    : `Tip: after your next weigh-in, jot down one thing you're proud of. Those add up.`;
+}
+
+/* ── reminders ── */
+function daysSinceLast(list){
+  if(!list.length) return Infinity;
+  const t = new Date(list[0].entered_at).getTime();   // list is newest-first
+  return Math.floor((Date.now()-t)/86400000);
+}
+function loggedToday(list){
+  const today = dayKey(new Date());
+  return list.some(x=>dayKey(x.entered_at)===today);
+}
+function updateReminderBanner(){
+  if(reminderDismissed || !profile){ $('reminder-banner').classList.add('hidden'); return; }
+  let icon='', text='';
+  if(profile.remind_weigh && !loggedToday(entries)){
+    icon='☀️'; text="Ready for today's weigh-in? A few seconds keeps your momentum going.";
+  } else if(profile.remind_journal && daysSinceLast(journalMeta) >= 2){
+    icon='✍️'; text="When you have a moment, jot down a win — even one line counts.";
+  }
+  const b = $('reminder-banner');
+  if(text){ $('reminder-icon').textContent=icon; $('reminder-text').textContent=text; b.classList.remove('hidden'); }
+  else b.classList.add('hidden');
+}
+$('reminder-dismiss').onclick = () => { reminderDismissed = true; $('reminder-banner').classList.add('hidden'); };
+
+/* reminder setting toggles */
+function syncReminderSwitches(){
+  $('sw-weigh').classList.toggle('on', !!(profile && profile.remind_weigh));
+  $('sw-journal').classList.toggle('on', !!(profile && profile.remind_journal));
+}
+async function setReminderPref(field, on){
+  if(!profile) return;
+  profile[field] = on;
+  const { error } = await sb.from('wl_profiles').update({ [field]: on }).eq('user_id', profile.user_id);
+  if(error) toast(error.message);
+  syncReminderSwitches(); updateReminderBanner();
+}
+$('sw-weigh').onclick   = () => setReminderPref('remind_weigh',  !(profile && profile.remind_weigh));
+$('sw-journal').onclick = () => setReminderPref('remind_journal', !(profile && profile.remind_journal));
+
+/* pull it together after data loads */
+async function refreshMotivation(){
+  if(!profile) return;
+  await checkAwards();
+  await renderRecap();
+  if(typeof renderPrediction === 'function') renderPrediction();
+  syncReminderSwitches();
+  updateReminderBanner();
+}
+
+/* ══════════════ PHASE 6 — SHARING, OVERLAYS & CHEERS ══════════════ */
+let sharesIMake = [];      // rows where I'm the owner  {viewer_id, levels, prof}
+let sharesWithMe = [];     // rows where I'm the viewer {owner_id, levels, prof}
+let pendingTiers = new Set();
+const overlayOn = new Set();          // owner_ids currently shown on my graph
+const friendData = new Map();         // owner_id -> [{x:Date,y:Number}] (cached)
+const FRIEND_COLORS = ['#7C5CFF','#00A6A6','#E85D9E','#3AA655','#5B8DEF','#C2410C'];
+const TIER_LABEL = { relative:'Relative', full:'Full data', weekly:'Weekly', awards:'Awards' };
+
+function profName(prof){
+  if(!prof) return 'Friend';
+  return prof.display_name || ('Friend · ' + (prof.share_code||''));
+}
+function initials(prof){
+  const n = profName(prof).replace(/^Friend · /,'');
+  return (n[0]||'?').toUpperCase();
+}
+function friendColor(ownerId){
+  const idx = sharesWithMe.findIndex(s=>s.owner_id===ownerId);
+  return FRIEND_COLORS[(idx>=0?idx:0) % FRIEND_COLORS.length];
+}
+function hasDataTier(levels){ return levels.some(l=>['full','weekly','relative'].includes(l)); }
+
+/* tier picker for the add form */
+document.querySelectorAll('#tier-picks .tier').forEach(el => el.onclick = () => {
+  const t = el.dataset.tier;
+  if(pendingTiers.has(t)) pendingTiers.delete(t); else pendingTiers.add(t);
+  el.classList.toggle('on', pendingTiers.has(t));
+});
+
+/* save display name */
+$('btn-name-save').onclick = async () => {
+  const name = $('in-name').value.trim();
+  const { error } = await sb.from('wl_profiles').update({ display_name: name || null }).eq('user_id', profile.user_id);
+  if(error) return toast(error.message);
+  profile.display_name = name; toast('Name saved');
+};
+
+/* add / update a share */
+$('btn-share-add').onclick = async () => {
+  const code = $('in-share-code').value.trim().toUpperCase();
+  if(!code) { setMsg('share-msg','Enter their share code.', 'err'); return; }
+  if(!pendingTiers.size) { setMsg('share-msg','Pick at least one thing to share.', 'err'); return; }
+  const { data: pr, error: e1 } = await sb.from('wl_profiles')
+    .select('user_id').eq('share_code', code).maybeSingle();
+  if(e1) return setMsg('share-msg', e1.message, 'err');
+  if(!pr) return setMsg('share-msg','No one found with that code. Double-check it with them.', 'err');
+  if(pr.user_id === profile.user_id) return setMsg('share-msg','That\'s your own code 🙂', 'err');
+  const { error } = await sb.from('wl_shares')
+    .upsert({ owner_id: profile.user_id, viewer_id: pr.user_id, levels:[...pendingTiers] },
+            { onConflict:'owner_id,viewer_id' });
+  if(error) return setMsg('share-msg', error.message, 'err');
+  $('in-share-code').value=''; pendingTiers.clear();
+  document.querySelectorAll('#tier-picks .tier').forEach(el=>el.classList.remove('on'));
+  setMsg('share-msg','');
+  toast('Sharing set up ✨');
+  await loadShares();
+};
+
+async function loadShares(){
+  if(!profile) return;
+  const me = profile.user_id;
+  const [{ data: mine }, { data: incoming }] = await Promise.all([
+    sb.from('wl_shares').select('viewer_id, levels').eq('owner_id', me),
+    sb.from('wl_shares').select('owner_id, levels').eq('viewer_id', me),
+  ]);
+  const ids = [...new Set([...(mine||[]).map(r=>r.viewer_id), ...(incoming||[]).map(r=>r.owner_id)])];
+  let profs = {};
+  if(ids.length){
+    const { data: pr } = await sb.from('wl_profiles').select('user_id, display_name, share_code').in('user_id', ids);
+    (pr||[]).forEach(p => profs[p.user_id] = p);
+  }
+  sharesIMake  = (mine||[]).map(r => ({ ...r, prof: profs[r.viewer_id] }));
+  sharesWithMe = (incoming||[]).map(r => ({ ...r, prof: profs[r.owner_id] }));
+  renderShares();
+}
+
+function renderShares(){
+  // People I share with — editable tier chips + revoke
+  const mineEl = $('shares-mine');
+  mineEl.innerHTML = sharesIMake.length ? sharesIMake.map(s => `
+    <div class="friend-row">
+      <div class="fr-top">
+        <div class="avatar">${initials(s.prof)}</div>
+        <div class="fname">${escapeHtml(profName(s.prof))}<small>You control what they see — tap a tag to toggle it</small></div>
+        <button class="revoke" data-revoke="${s.viewer_id}">Revoke</button>
+      </div>
+      <div class="chip-row">
+        ${['relative','full','weekly','awards'].map(t=>{
+          const on = s.levels.includes(t);
+          return `<span class="chip ${on?'':'off'}" data-vid="${s.viewer_id}" data-toggle="${t}">${TIER_LABEL[t]}</span>`;
+        }).join('')}
+      </div>
+    </div>`).join('')
+    : `<p class="hint" style="padding:6px 0;">You're not sharing with anyone yet. Add a share code above to get started.</p>`;
+  mineEl.querySelectorAll('[data-revoke]').forEach(b => b.onclick = () => revokeShare(b.dataset.revoke));
+  mineEl.querySelectorAll('[data-toggle]').forEach(c => c.onclick = () => toggleTier(c.dataset.vid, c.dataset.toggle));
+
+  // People sharing with me — read-only tiers + overlay toggle + cheers
+  const inEl = $('shares-incoming');
+  inEl.innerHTML = sharesWithMe.length ? sharesWithMe.map(s => {
+    const dataTier = hasDataTier(s.levels);
+    return `
+    <div class="friend-row">
+      <div class="fr-top">
+        <div class="avatar" style="background:${friendColor(s.owner_id)}">${initials(s.prof)}</div>
+        <div class="fname">${escapeHtml(profName(s.prof))}<small>Shared with you: ${s.levels.map(l=>TIER_LABEL[l]).join(', ')||'nothing yet'}</small></div>
+      </div>
+      <div class="fr-acts">
+        ${dataTier ? `<label class="overlay-toggle"><span class="switch ${overlayOn.has(s.owner_id)?'on':''}" data-overlay="${s.owner_id}"><i></i></span> Show on my graph</label>` : '<span class="hint">Awards only — no graph data shared</span>'}
+        <span style="flex:1"></span>
+        <span class="cheer-btns">
+          ${['👏','💪','🎉','❤️'].map(e=>`<button data-cheer="${s.owner_id}" data-emoji="${e}" title="Send a cheer">${e}</button>`).join('')}
+        </span>
+      </div>
+    </div>`;
+  }).join('')
+    : `<p class="hint" style="padding:6px 0;">No one is sharing with you yet. Give friends your share code (above) so they can add you.</p>`;
+  inEl.querySelectorAll('[data-overlay]').forEach(el => el.onclick = () => toggleOverlay(el.dataset.overlay));
+  inEl.querySelectorAll('[data-cheer]').forEach(b => b.onclick = () => sendCheer(b.dataset.cheer, b.dataset.emoji));
+}
+
+async function toggleTier(viewerId, tier){
+  const s = sharesIMake.find(x=>x.viewer_id===viewerId); if(!s) return;
+  const levels = s.levels.includes(tier) ? s.levels.filter(t=>t!==tier) : [...s.levels, tier];
+  const { error } = await sb.from('wl_shares').update({ levels }).eq('owner_id', profile.user_id).eq('viewer_id', viewerId);
+  if(error) return toast(error.message);
+  s.levels = levels; renderShares();
+}
+async function revokeShare(viewerId){
+  if(!confirm('Stop sharing with this person? They\'ll no longer see your data.')) return;
+  const { error } = await sb.from('wl_shares').delete().eq('owner_id', profile.user_id).eq('viewer_id', viewerId);
+  if(error) return toast(error.message);
+  toast('Sharing revoked'); await loadShares();
+}
+
+/* friend graph overlays */
+async function toggleOverlay(ownerId){
+  if(overlayOn.has(ownerId)){ overlayOn.delete(ownerId); renderShares(); renderChart(); return; }
+  // fetch once, cache
+  if(!friendData.has(ownerId)){
+    const { data, error } = await sb.from('wl_weight_entries')
+      .select('entered_at, weight_lb').eq('user_id', ownerId).order('entered_at');
+    if(error){ toast('Could not load their data'); return; }
+    friendData.set(ownerId, (data||[]).map(e=>({ x:new Date(e.entered_at), y:e.weight_lb })));
+  }
+  overlayOn.add(ownerId);
+  renderShares(); renderChart();
+}
+
+/* build friend overlay datasets, shaped by their highest-privacy tier */
+function friendOverlayDatasets(from, to){
+  const out = [];
+  const userPts = pointsInRange();
+  const baselineUser = userPts.length ? userPts[0].y : null;
+  overlayOn.forEach(ownerId => {
+    const share = sharesWithMe.find(s=>s.owner_id===ownerId); if(!share) return;
+    const all = friendData.get(ownerId) || [];
+    const pts = all.filter(p=>p.x>=from && p.x<=to).sort((a,b)=>a.x-b.x);
+    if(!pts.length) return;
+    const color = friendColor(ownerId);
+    const name = profName(share.prof);
+    const base = { borderColor:color, backgroundColor:'transparent', borderWidth:2.5,
+                   pointRadius:0, tension:0.35, fill:false, _friend:true, label:name };
+
+    if(share.levels.includes('full')){
+      out.push({ ...base, data: pts, pointRadius:3, pointBackgroundColor:color });
+    } else if(share.levels.includes('weekly')){
+      out.push({ ...base, data: weeklyAggregate(pts), pointRadius:3, pointBackgroundColor:color, label:name+' (weekly)' });
+    } else if(share.levels.includes('relative') && baselineUser!=null){
+      // shift their shape to align with the user's baseline; absolute numbers hidden
+      const fFirst = pts[0].y;
+      const shifted = pts.map(p=>({ x:p.x, y: p.y - fFirst + baselineUser }));
+      out.push({ ...base, data: shifted, borderDash:[4,4], _relative:true, _baseline:baselineUser, label:name+' (relative)' });
+    }
+  });
+  return out;
+}
+function weeklyAggregate(pts){
+  const buckets = new Map();
+  pts.forEach(p=>{
+    const d = new Date(p.x); const day = (d.getDay()+6)%7;         // Monday=0
+    const monday = new Date(d); monday.setDate(d.getDate()-day); monday.setHours(0,0,0,0);
+    const k = monday.getTime();
+    if(!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(p.y);
+  });
+  return [...buckets.entries()].sort((a,b)=>a[0]-b[0])
+    .map(([k,ys])=>({ x:new Date(k), y: ys.reduce((s,v)=>s+v,0)/ys.length }));
+}
+
+/* cheers */
+async function sendCheer(toId, emoji){
+  const note = prompt('Add a short encouraging note? (optional)') || null;
+  const { error } = await sb.from('wl_cheers').insert({ from_id: profile.user_id, to_id: toId, emoji, message: note });
+  if(error) return toast(error.message);
+  toast(`Cheer sent ${emoji}`);
+}
+async function loadCheers(){
+  if(!profile) return;
+  const { data, error } = await sb.from('wl_cheers')
+    .select('emoji, message, created_at, from_id').eq('to_id', profile.user_id)
+    .order('created_at', { ascending:false }).limit(50);
+  if(error){ console.warn(error); return; }
+  const rows = data || [];
+  // resolve sender names
+  const ids = [...new Set(rows.map(r=>r.from_id))];
+  let profs = {};
+  if(ids.length){
+    const { data: pr } = await sb.from('wl_profiles').select('user_id, display_name, share_code').in('user_id', ids);
+    (pr||[]).forEach(p => profs[p.user_id]=p);
+  }
+  const host = $('cheers-list');
+  host.innerHTML = rows.length ? rows.map(c => {
+    const d = new Date(c.created_at);
+    return `<div class="cheer-item">
+      <div class="ce">${c.emoji||'👏'}</div>
+      <div class="cbody">
+        <div class="cfrom">${escapeHtml(profName(profs[c.from_id]))}</div>
+        ${c.message?`<div class="cmsg">${escapeHtml(c.message)}</div>`:''}
+      </div>
+      <div class="cwhen">${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>
+    </div>`;
+  }).join('')
+    : `<div class="empty"><div class="big">👏</div><p><strong>No cheers yet.</strong><br>They'll appear here when friends celebrate your progress.</p></div>`;
+}
+
+/* ══════════════ PHASE 7 — GHOST OF WEIGHT FUTURE ══════════════ */
+let showPrediction = false;
+const PRED_HORIZON = 90;          // days projected beyond the last entry
+const GHOST_COLOR = '#7C3AED';
+
+/* least-squares fit of weight (lb) vs time (days), over recent data */
+function regressionFit(pts){
+  const t0 = pts[0].x.getTime();
+  const xs = pts.map(p => (p.x.getTime()-t0)/86400000);
+  const ys = pts.map(p => p.y);
+  const n = xs.length;
+  const sx = xs.reduce((a,b)=>a+b,0), sy = ys.reduce((a,b)=>a+b,0);
+  const sxx = xs.reduce((a,b)=>a+b*b,0), sxy = xs.reduce((a,b,i)=>a+b*ys[i],0);
+  const denom = n*sxx - sx*sx;
+  if(denom === 0) return null;
+  const slope = (n*sxy - sx*sy)/denom;               // lb/day
+  const intercept = (sy - slope*sx)/n;
+  const resid = xs.map((x,i)=>ys[i]-(slope*x+intercept));
+  const resStd = Math.sqrt(resid.reduce((a,r)=>a+r*r,0)/Math.max(1,n-2));
+  return { slope, intercept, resStd, t0, lastX: xs[n-1], lastDate: pts[n-1].x, lastY: ys[n-1] };
+}
+function predictionSource(){
+  const chron = chronEntries();
+  const cutoff = Date.now()-60*86400000;
+  let pts = chron.filter(e=>new Date(e.entered_at).getTime()>=cutoff).map(e=>({x:new Date(e.entered_at),y:e.weight_lb}));
+  if(pts.length < 4) pts = chron.map(e=>({x:new Date(e.entered_at),y:e.weight_lb}));   // fall back to all
+  return pts;
+}
+function canPredict(pts){
+  if(pts.length < 4) return false;
+  const spanDays = (pts[pts.length-1].x - pts[0].x)/86400000;
+  return spanDays >= 7;
+}
+function computePrediction(){
+  const src = predictionSource();
+  if(!canPredict(src)) return null;
+  const fit = regressionFit(src);
+  return fit ? { fit, src } : null;
+}
+function yAtDay(fit, x){
+  let v = fit.slope*x + fit.intercept;
+  const floor = getFloor();
+  if(floor != null) v = Math.max(v, floor);          // never project below the healthy floor
+  return v;
+}
+function projectionDatasets(fit){
+  const floor = getFloor();
+  const center = [], upper = [], lower = [];
+  // anchor at the actual last point so the line connects
+  center.push({ x: fit.lastDate, y: fit.lastY });
+  upper.push({ x: fit.lastDate, y: fit.lastY });
+  lower.push({ x: fit.lastDate, y: fit.lastY });
+  for(let dx=3; dx<=PRED_HORIZON; dx+=3){
+    const x = fit.lastX + dx;
+    const date = new Date(fit.t0 + x*86400000);
+    const y = yAtDay(fit, x);
+    const band = fit.resStd * (1 + dx/PRED_HORIZON*0.9);
+    center.push({ x:date, y });
+    upper.push({ x:date, y: y+band });
+    lower.push({ x:date, y: floor!=null ? Math.max(y-band, floor) : y-band });
+  }
+  const endDate = new Date(fit.t0 + (fit.lastX + PRED_HORIZON)*86400000);
+  return {
+    endDate,
+    datasets: [
+      { label:'Range', data:upper, borderColor:'transparent', pointRadius:0, fill:false, _ghost:true, _band:true },
+      { label:'Range', data:lower, borderColor:'transparent', pointRadius:0, fill:'-1',
+        backgroundColor:'rgba(124,58,237,0.10)', _ghost:true, _band:true },
+      { label:'Ghost of future', data:center, borderColor:GHOST_COLOR, borderDash:[7,5],
+        borderWidth:2.5, pointRadius:0, fill:false, tension:0.2, _ghost:true },
+    ],
+  };
+}
+
+/* ETAs to each enabled goal at the current pace */
+function goalEtas(fit){
+  const latest = latestWeight(); if(latest == null) return [];
+  const seen = new Set(); const out = [];
+  activeGoalLines().forEach(g => {
+    if(g.value >= latest || seen.has(g.value)) return;
+    seen.add(g.value);
+    if(fit.slope >= -0.0007){ out.push({ label:g.label, value:g.value, date:null }); return; }
+    const x = (g.value - fit.intercept)/fit.slope;
+    const days = x - fit.lastX;
+    if(days <= 0) return;
+    if(days > 365*2) { out.push({ label:g.label, value:g.value, date:null, far:true }); return; }
+    out.push({ label:g.label, value:g.value, date:new Date(fit.t0 + x*86400000), days:Math.round(days) });
+  });
+  return out.sort((a,b)=> (a.date&&b.date) ? a.date-b.date : (a.date?-1:1));
+}
+
+function renderPrediction(){
+  const host = $('ghost-summary'); if(!host) return;
+  const pred = computePrediction();
+  if(!pred){
+    $('sw-predict').classList.remove('on'); showPrediction = false;
+    host.innerHTML = `<p class="hint" style="padding:4px 0;">Log at least <strong>4 times over about a week</strong> and your Ghost of Weight Future will appear here — showing where your pace is heading, and when you'd reach your goals.</p>`;
+    return;
+  }
+  const fit = pred.fit;
+  const perWeek = fit.slope*7;
+  const y30 = yAtDay(fit, fit.lastX+30);
+  const y90 = yAtDay(fit, fit.lastX+90);
+  const u = unit();
+  const floorNote = getFloor()!=null ? ` <span class="muted">(and we'll never project below your healthy floor of ${getFloor()} ${u})</span>` : '';
+
+  let lead;
+  if(perWeek <= -0.15){
+    lead = `<p style="font-size:15px;line-height:1.6;">At your recent pace of about <strong>${Math.abs(perWeek).toFixed(1)} ${u}/week</strong>, you're on track for roughly <strong>${y30.toFixed(1)} ${u}</strong> in 30 days and <strong>${y90.toFixed(1)} ${u}</strong> in 90 days.${floorNote}</p>`;
+  } else if(perWeek >= 0.15){
+    lead = `<p style="font-size:15px;line-height:1.6;">The recent trend is edging up a little — totally normal, and completely changeable. A small daily shift bends this curve back down. Here's the current path so you can steer it.</p>`;
+  } else {
+    lead = `<p style="font-size:15px;line-height:1.6;">Your weight's been holding steady lately. If you'd like to see it move, even a small consistent change starts bending this curve.</p>`;
+  }
+
+  const etas = goalEtas(fit);
+  let etaHtml = '';
+  if(etas.length){
+    etaHtml = '<div class="recap-grid" style="margin-top:12px;">' + etas.slice(0,4).map(e=>{
+      const when = e.date
+        ? e.date.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})
+        : 'keep going 💪';
+      const sub = e.date ? `~${e.days} days away` : (e.far ? 'a long-term goal' : 'pace not falling yet');
+      return `<div class="recap-item"><div class="rl">${escapeHtml(e.label)}</div><div class="rv" style="font-size:15px;">${when}</div><div class="rl">${sub}</div></div>`;
+    }).join('') + '</div>';
+  }
+  host.innerHTML = lead + etaHtml +
+    `<p class="hint" style="margin-top:12px;">This is a simple projection from your recent trend — not a promise. The future you is the one who gets to write it. Toggle "Show on graph" to see it drawn.</p>`;
+}
+
+$('sw-predict').onclick = () => {
+  const pred = computePrediction();
+  if(!pred){ toast('Log a few more times first 🙂'); return; }
+  showPrediction = !showPrediction;
+  $('sw-predict').classList.toggle('on', showPrediction);
+  renderChart();
+};
+
+/* deep-link help to a section by heading keyword */
+function openHelpAt(keyword) {
+  openHelp();
+  setTimeout(() => {
+    const body = $('help-body');
+    const h = [...body.querySelectorAll('h2')].find(x => x.textContent.toLowerCase().includes(keyword));
+    if (h) h.scrollIntoView({ behavior:'smooth', block:'start' });
+  }, 60);
+}
+
+/* hook chart into data loads */
+const _loadProfile = loadProfile;
+loadProfile = async function() {
+  await _loadProfile();
+  if (profile && profile.chart_mode) chartMode = profile.chart_mode;
+  document.querySelectorAll('#mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode===chartMode));
+  document.querySelectorAll('#windows button').forEach(b => b.classList.toggle('on', b.dataset.win===activeWindow));
+};
+const _loadEntries = loadEntries;
+loadEntries = async function() {
+  await _loadEntries();
+  renderChart();
+  await refreshMotivation();     // awards + recap + reminders depend on entries
+};
+
+/* load journal + goals + awards + sharing alongside profile after auth */
+const _loadProfile2 = loadProfile;
+loadProfile = async function() {
+  await _loadProfile2();
+  if(profile){ $('in-name').value = profile.display_name || ''; }
+  await loadJournal();
+  await loadGoals();
+  await loadAwards();
+  await loadShares();
+  await loadCheers();
+};
+
+/* recompute motivation after a journal is saved/edited/deleted */
+const _loadJournal = loadJournal;
+loadJournal = async function() {
+  await _loadJournal();
+  await refreshMotivation();
+};
+</script>
+</body>
+</html>
