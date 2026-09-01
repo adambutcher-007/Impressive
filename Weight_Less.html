@@ -327,6 +327,8 @@
   .switch i { position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:999px; background:#fff;
     transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
   .switch.on i { left:21px; }
+  @keyframes wl-switch-flash { 0%,100% { box-shadow:none; } 50% { box-shadow:0 0 0 6px rgba(245,87,108,.28); } }
+  .switch.flash { animation:wl-switch-flash .6s ease-in-out 3; }
   .floor-box { background:var(--grad-soft); border-radius:var(--radius-sm); padding:14px; margin-bottom:16px; }
   .floor-box .frow { display:flex; gap:8px; align-items:flex-end; }
   .floor-box .frow > div { flex:1; }
@@ -1220,6 +1222,36 @@ function errToast(msg){ WLAudio.play('ui_nudge'); toast(msg); }
    (plan: wl_affirmations.md §3, §4). The button itself lives in
    #affirmations-card; this wires the hold gesture to WLAudio.playAffirmation()
    and keeps the "heard N of total" / "come back tomorrow" copy current. */
+function affirmSoundReady(){
+  // Affirmations play on the voice bus, which needs BOTH the master sound
+  // toggle and spoken-encouragement toggle on (WLAudio's own enabled() rule
+  // for bus 'voice'). Checked here so a hold never just plays into silence.
+  return !!(WLAudio.prefs.sfx && WLAudio.prefs.voice);
+}
+function warnAffirmSoundOff(){
+  const el = $('affirm-sub'); if(!el) return;
+  const needsBoth = !WLAudio.prefs.sfx && !WLAudio.prefs.voice;
+  const what = needsBoth ? 'Sound and spoken encouragement are' :
+               (!WLAudio.prefs.sfx ? 'Sound is' : 'Spoken encouragement is');
+  el.innerHTML = '';
+  el.append(what + " off, so this wouldn't make a sound. ");
+  const link = document.createElement('a');
+  link.href = '#'; link.textContent = 'Turn it on →';
+  link.onclick = (e) => { e.preventDefault(); goToSoundSettings(); };
+  el.append(link);
+  // A quiet chime rather than silence-with-no-feedback — this is the same
+  // "something needs your attention" cue used elsewhere (setMsg/errToast),
+  // and it only actually plays if the master sound toggle happens to be on.
+  WLAudio.play('ui_nudge');
+}
+function goToSoundSettings(){
+  const idx = SECTIONS.findIndex(s => s.id === 'sound-card');
+  if(idx >= 0) jumpToSection(idx); else document.getElementById('sound-card').scrollIntoView({behavior:'smooth'});
+  ['sw-sound','sw-voice'].forEach(id => {
+    const el = $(id); if(!el) return;
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  });
+}
 function renderAffirmSub(){
   const el = $('affirm-sub'); const label = $('affirm-btn-label');
   if(!el || !label) return;
@@ -1269,6 +1301,7 @@ function checkAffirmCycleComplete(completed){
   }
   function start(e){
     if(btn.disabled) return;
+    if(!affirmSoundReady()){ warnAffirmSoundOff(); return; }
     holding = true; holdStart = performance.now();
     btn.classList.add('holding'); ring.style.transition = 'none'; setRing(0);
     raf = requestAnimationFrame(tick);
@@ -2853,11 +2886,13 @@ $('sw-sound').onclick = () => {
   WLAudio.setPref('sfx', on);
   syncSoundSwitches();
   if(on) WLAudio.play('ui_toggle'); else WLAudio.stopAll();
+  renderAffirmSub();
 };
 $('sw-voice').onclick = () => {
   WLAudio.setPref('voice', !WLAudio.prefs.voice);
   syncSoundSwitches();
   WLAudio.play('ui_toggle');
+  renderAffirmSub();
 };
 $('sw-music').onclick = () => {
   const on = !WLAudio.prefs.music;
